@@ -122,6 +122,34 @@ off-limits by the user's decision.
 
 Scope is deliberately small: newest posts only, never a bulk scrape.
 
+### The skill must be a directory, not a flat file
+
+`.claude/skills/extract-instagram/SKILL.md` — **not** `.claude/skills/extract-instagram.md`.
+A flat `.md` file sits there looking correct and is silently never registered:
+`claude -p` asked whether the skill was available answered "NO ... exists as a
+project file but is not registered as an invocable skill". After moving it into
+a directory as `SKILL.md`, the same probe answers "YES". Worth re-checking with
+that one-line probe after any change to the skill's location or frontmatter,
+because nothing else reports the failure — the nightly job would simply run and
+do nothing.
+
+### Nightly run
+
+`scripts/nightly-extract.sh` runs from the user's crontab at `35 2 * * *`
+(the machine is `America/Chicago`, so that is already CT):
+
+- cron has almost no environment, so PATH is set explicitly — node lives under
+  nvm, claude under `~/.local/bin`.
+- Tool authority is a named `--allowed-tools` allowlist, deliberately not a
+  blanket permission bypass, so the user's settings and hooks still apply.
+- `flock` prevents overlapping runs; logs land in `logs/` (gitignored) and are
+  pruned after a fortnight.
+- It sits five minutes after an existing Home Assistant backup job at 02:30.
+
+The run needs Chrome open and logged in. If the machine is asleep the night is
+simply missed, which is harmless: the cursor in `state.json` means the next run
+resumes exactly where it stopped.
+
 ### Carousels: always use ?img_index=N
 
 Fetch each carousel slide by URL — `https://www.instagram.com/p/<code>/?img_index=<n>`

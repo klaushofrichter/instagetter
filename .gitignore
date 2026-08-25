@@ -6,3 +6,5 @@ dist/
 !.env.example
 *.swp
 *.swo
+logs/
+.claude/scheduled_tasks.lock
