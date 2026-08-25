@@ -121,11 +121,40 @@ The uploader needs `exiftool` and `sharp`; neither ships in the container.
 
 ## The page
 
-Three-column grid on desktop, a single stacked column on narrow screens, nine
-per page with pagination. Clicking a tile opens a lightbox with the
-full-resolution image and its metadata, previous/next by button or cursor key,
-fullscreen, and download. `Esc` closes it. Light and dark themes follow the
-system setting, with a manual toggle remembered per browser.
+A three-column grid on desktop, a single stacked column on narrow screens, nine
+images per page with pagination. Carousel slides sit adjacent and are badged
+`1/2`, `2/2`, and so on.
+
+The header carries three icon buttons: **theme** (light/dark, remembered per
+browser), **refresh** (re-sync from S3, limited to one request per five seconds),
+and **(i)** for an about panel. The title mark links to skylar.technology and the
+name links to this repository.
+
+### Detail view
+
+Clicking a tile opens the image at full resolution alongside its caption, date,
+location, dimensions, likes, and a link to the original post. Previous and next
+are available as on-image buttons or with the cursor keys, plus buttons to
+download the file, enter fullscreen, and close.
+
+### Fullscreen
+
+Fullscreen shows the picture and nothing else — no toolbar, no metadata, no
+counter. The image scales to fill the screen in either direction while keeping
+its aspect ratio, so small originals are enlarged rather than stranded in the
+middle of a black field.
+
+| Key / action | Effect |
+|---|---|
+| click the image | enter fullscreen |
+| `f` | toggle fullscreen |
+| `←` `→` | previous / next image, in fullscreen too |
+| `space` | show or hide the metadata overlay (fullscreen only) |
+| `Esc` | leave fullscreen, then close the detail view |
+| the `X`, top right | leave fullscreen, or close the detail view |
+
+The space-bar overlay is a translucent panel across the bottom of the screen
+with the caption and facts centred, tinted to match the active theme.
 
 ## Deployment
 
