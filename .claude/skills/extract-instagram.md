@@ -45,6 +45,10 @@ scrape of the account or of anyone else's.
   and treat the in-page byte count as a claim, not proof.
 - **`javascript_tool` calls time out at 45s.** Do not loop a whole carousel plus
   hydration waits in one call — one slide per call for carousels.
+- **The location line is not always the location.** On a post Instagram has
+  labelled as AI-generated, the body text runs `username / "AI content" /
+  <real location>`, so taking the line after the username captures the badge
+  instead. Skip a leading `AI content` line before reading the location.
 - **Hydration is not a fixed delay.** 2.8s was enough for some posts and not for
   others; a post whose image had not loaded reported `imgCount: 0` with perfectly
   good metadata. Poll for the image (`width > 400`) up to ~15s instead of
@@ -98,3 +102,15 @@ waits and spacing between downloads over speed.
 Each carousel image is its own slot (`<shortcode>_1`, `<shortcode>_2`, …) and
 occupies its own grid tile, adjacent in the sequence. Example post with two
 images: https://www.instagram.com/p/DS0ovdXklvR/
+
+**Always fetch slides by URL: `/p/<code>/?img_index=<n>`.** Do not click the
+Next control. Some carousels render a blank grey image frame in the automation
+context — caption, location, likes and the slide dots all present, no image
+ever loading, on a fresh tab, with no console error — while the same post
+displays fine in the user's own window. Two posts were wrongly written off as
+unextractable before this was found. With `?img_index=N` every slide loads
+immediately (`waitedMs: 0`). It also avoids the click, the transition wait, and
+the decode burst that can stall the renderer.
+
+Take the slide count from the dots, and stop early if the image bytes repeat —
+an out-of-range `img_index` just shows the last slide.
