@@ -7,6 +7,9 @@
  *   node scripts/state.js --skip <shortcode>    # never attempt this post again
  *   node scripts/state.js --record <n> <m>      # note counts for the last run
  *
+ * --record also stamps lastRunSource from INSTAGETTER_RUN_SOURCE (the cron
+ * wrapper sets "cron"), so a run's origin is recorded rather than inferred.
+ *
  * The cursor is the takenAt of the oldest post already handled; backfill
  * continues with posts older than it. If state.json is missing it is derived
  * from index.json, so the state is self-healing rather than authoritative.
@@ -61,6 +64,9 @@ async function main() {
     state.lastRun = new Date().toISOString();
     state.lastNewCount = Number(args[1]) || 0;
     state.lastBackfillCount = Number(args[2]) || 0;
+    // The cron wrapper sets this, so a run can be attributed rather than
+    // guessed at from upload timestamps alone.
+    state.lastRunSource = process.env.INSTAGETTER_RUN_SOURCE || 'manual';
     await putJson('state.json', state);
   }
 

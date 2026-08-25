@@ -28,6 +28,8 @@ fi
 
 # Keys from the shared credentials file, bucket/region from .env.
 export AWS_SHARED_CREDENTIALS_FILE="$HOME/Development/kubesetup/credentials-insta"
+# Stamped into state.json by --record so the run can be attributed to cron.
+export INSTAGETTER_RUN_SOURCE=cron
 set -a; . "$PROJECT/.env"; set +a
 
 echo "=== $(date -Is) starting nightly extraction ===" >> "$LOG"
