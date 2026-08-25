@@ -56,46 +56,106 @@ scrape of the account or of anyone else's.
 
 ## Steps
 
-1. `export AWS_SHARED_CREDENTIALS_FILE=$HOME/Development/kubesetup/credentials-insta`
-   and load `.env` for `S3_BUCKET` / `AWS_REGION`.
-2. `node scripts/known-ids.js` → the slot ids already in S3. Skip those posts.
-3. New tab → `https://www.instagram.com/klaushofrichter`. Collect the newest
-   post links from the grid (`a[href^="/p/"]`), newest first. Default to the
-   newest 12 posts unless the user asks for more.
-4. For each unknown shortcode, newest first:
-   - Navigate to `https://www.instagram.com/p/<shortcode>/`, wait ~2.5s.
-   - Read metadata:
-     - caption — `meta[property="og:title"]` (text inside the quotes), or the
-       caption line of `body.innerText`
-     - `takenAt` — `document.querySelector('time').getAttribute('datetime')`
-     - location — the line under the username in the header, when present
-     - likes / comments — from `meta[property="og:description"]`
-     - `imgCount` — number of carousel dots; 1 when there are none
-   - For each slide `NN` from 1..imgCount:
-     - Locate the main image (`width > 400` rule above).
-     - In-page: `fetch(img.currentSrc)` → blob → anchor with
-       `download="<shortcode>_<NN>.jpg"` → click. Record `naturalWidth/Height`.
-     - If more slides remain, click the `aria-label="Next"` control and wait
-       ~800ms. Slides already mounted need no click; long carousels do.
+Each run has two phases: catch up on anything new at the top of the profile,
+then take another 12 older posts from where the last run stopped.
+
+### Setup
+
+```bash
+export AWS_SHARED_CREDENTIALS_FILE=$HOME/Development/kubesetup/credentials-insta
+set -a; . .env; set +a          # S3_BUCKET, AWS_REGION
+node scripts/state.js           # backfillCursor + skipped list
+node scripts/known-ids.js       # slot ids already in S3
+```
+
+`state.json` in S3 holds `backfillCursor` (the takenAt of the oldest post
+handled so far) and `skipped` (posts never to retry). If it is missing the
+cursor is derived from the oldest entry in `index.json`, so the state is
+self-healing rather than a fragile counter — deleting it costs nothing.
+
+### Phase 1 — new posts
+
+Open a fresh tab on the profile and read the grid links. Any shortcode not
+already in S3 **and newer than the newest stored post** is new: extract it.
+Usually there are none. Do not scroll for this phase; new posts are at the top.
+
+### Phase 2 — backfill 12 older posts
+
+Scroll the grid (see the scrolling note below) until posts older than
+`backfillCursor` appear, then take the next **12** shortcodes that are neither
+in S3 nor in `skipped`, working from newest to oldest.
+
+- **Carousels do not count against the 12 as a group** — if the twelfth post is
+  a six-image carousel, take all six slides. Never leave a carousel half
+  stored: complete the set even if that means 17 slots instead of 12.
+- After a successful upload, move the cursor to the takenAt of the oldest post
+  just handled: `node scripts/state.js --set-cursor <ISO>`.
+
+### Images only
+
+This app stores photographs. **Skip videos and reels** — check
+`document.querySelectorAll('video').length` and the `og:video` meta tag before
+extracting, and record a skip so the post is not retried every night:
+
+```bash
+node scripts/state.js --skip <shortcode>
+```
+
+Do the same for any post whose image genuinely cannot be fetched after trying
+`?img_index=1`. Never let a skip pass silently as a success.
+
+### Extracting one post
+
+Navigate to `https://www.instagram.com/p/<shortcode>/?img_index=<n>` — always
+with the index, even for a single image (see the carousel section: the bare URL
+sometimes renders a blank frame). Then:
+
+1. Poll for the main image rather than sleeping a fixed time.
+2. Read metadata: caption from `og:title`, `takenAt` from `time[datetime]`,
+   likes/comments from `og:description`, location from the body text — skipping
+   an `AI content` badge if present.
+3. In-page: `fetch(img.currentSrc)` -> blob -> anchor with
+   `download="<shortcode>_<NN>.jpg"` -> click.
+4. Repeat for each slide until the image bytes repeat, or the dot count is
+   reached.
+
+### Finishing
+
 5. **Verify every expected file exists in `~/Downloads` with a non-zero size**
    before staging. If files are missing, downloads are being blocked — stop and
    tell the user rather than uploading a partial set. Then move them into a
-   staging directory and
-   write `manifest.json` there — an array of the metadata objects, each with
-   `id` (`<shortcode>_<NN>`), `shortcode`, `imgIndex`, `imgCount`, `caption`,
-   `hashtags`, `location`, `takenAt`, `likes`, `comments`, `postUrl`,
-   `extractedAt`. `width`/`height` are filled in by the upload script.
+   staging directory and write `manifest.json` — an array of the metadata
+   objects, each with `id` (`<shortcode>_<NN>`), `shortcode`, `imgIndex`,
+   `imgCount`, `caption`, `hashtags`, `location`, `takenAt`, `likes`,
+   `comments`, `postUrl`, `extractedAt`. `width`/`height` are filled in by the
+   upload script.
 6. `node scripts/upload-to-s3.js --staging <dir>` (add `--dry-run` first if
    unsure). It embeds EXIF, builds thumbnails, uploads, rebuilds `index.json`
    and prunes S3 to the newest 999 slots.
-7. Close the tab. Tell the user what was added, then hit **Refresh** on
-   https://insta.skylar.technology (or `POST /api/refresh`) to pull it into the
-   service cache.
+7. `node scripts/state.js --set-cursor <oldest ISO handled>` and
+   `node scripts/state.js --record <newCount> <backfillCount>`.
+8. Close the tab. Then `curl -s -X POST https://insta.skylar.technology/api/refresh`
+   so the live cache picks the images up, and report what was added.
+
+### Scrolling the grid
+
+The profile grid lazy-loads twelve posts at a time and **needs the page to have
+focus first**: click a neutral margin (e.g. x≈1258, y≈300) before scrolling, or
+the wheel events are swallowed and nothing loads. Programmatic `scrollTo` moves
+the page but does not trigger the fetch; real wheel events do.
 
 ## Cadence
 
-Intended to run about once a day. It is not time critical, so favour generous
-waits and spacing between downloads over speed.
+Runs nightly at 02:35 CT. The machine is `America/Chicago`, so a cron
+expression of `35 2 * * *` in local time is already CT — no conversion.
+
+Each run: catch up on new posts, then backfill twelve older ones. At twelve a
+night the ~1,285-post archive takes a few months to walk, which is the point —
+it is a trickle, not a scrape.
+
+Nothing about this is time critical. Prefer waiting over speed: poll for images
+rather than sleeping fixed amounts, and keep each `javascript_tool` call under
+the 45s limit.
 
 ## Carousels
 

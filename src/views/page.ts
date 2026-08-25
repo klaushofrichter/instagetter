@@ -128,7 +128,16 @@ export function renderPage(): string {
   /* Absolutely positioned so the percentage caps resolve against the stage's
      padding box. As a grid/flex child the row is auto-sized, so max-height:100%
      has no definite basis and is ignored — the image then overflows. */
-  .stage img { position: absolute; inset: 0; margin: auto; max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+  /* Fill the stage in both directions: max-width/max-height only cap a size and
+     never enlarge, so a small original used to sit at its natural size in the
+     middle of the stage while large ones scaled down. Definite dimensions plus
+     object-fit:contain scale either way and keep the aspect ratio. Absolute
+     positioning is what gives the percentages a box to resolve against. */
+  .stage img {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: contain; display: block;
+  }
   .nav {
     position: absolute; top: 50%; transform: translateY(-50%);
     width: 2.6rem; height: 2.6rem; border-radius: 50%; display: grid; place-items: center;
