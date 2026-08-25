@@ -135,7 +135,7 @@ do nothing.
 
 ### Nightly run
 
-`scripts/nightly-extract.sh` runs from the user's crontab at `35 2 * * *`
+`scripts/nightly-extract.sh` runs from the user's crontab at `48 2 * * *`
 (the machine is `America/Chicago`, so that is already CT):
 
 - cron has almost no environment, so PATH is set explicitly — node lives under
@@ -144,7 +144,7 @@ do nothing.
   blanket permission bypass, so the user's settings and hooks still apply.
 - `flock` prevents overlapping runs; logs land in `logs/` (gitignored) and are
   pruned after a fortnight.
-- It sits five minutes after an existing Home Assistant backup job at 02:30.
+- It sits eighteen minutes after an existing Home Assistant backup job at 02:30.
 
 The run needs Chrome open and logged in. If the machine is asleep the night is
 simply missed, which is harmless: the cursor in `state.json` means the next run

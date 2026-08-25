@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Nightly Instagram extraction, run from cron at 02:35 CT.
+# Nightly Instagram extraction, run from cron at 02:48 CT.
 #
 # Cron provides almost no environment, so everything is explicit: node lives
 # under nvm and claude under ~/.local/bin, neither on cron's default PATH.
