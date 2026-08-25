@@ -69,3 +69,31 @@ is what actually deploys. Cluster manifests live in `kube-setup`
   namespace via `envFrom`. Also in the local `.env` (gitignored).
 - `KUBE_SETUP_DEPLOY_TOKEN` — a GitHub PAT stored as a repository secret, used
   only by `deploy-production.yml` to push the manifest bump to `kube-setup`.
+
+## Cluster prerequisites
+
+These are one-time and already done, but a deploy silently fails without them —
+worth knowing if this pattern gets copied to a new service:
+
+- **A per-repo runner must exist.** `deploy-production.yml` targets
+  `[self-hosted, k3s]`, and runners in this cluster are registered per
+  repository, not shared. Without one the job queues forever with no error.
+  Ours is `manifests/instagetter-runner/` in `kube-setup` (derived from
+  `bulbs-runner`), registered as `instagetter-in-cluster-runner` via a
+  `runner-pat` Secret holding a GitHub PAT.
+- **The host needs an entry in the kourier gateway Ingress**
+  (`manifests/networking/knative-gateway-ingress.yaml`): both a host rule and
+  a `tls` entry (`insta-skylar-technology-tls`). The DomainMapping alone is
+  not enough — without the Ingress entry cert-manager issues no certificate
+  and Traefik does not route, so the deploy "succeeds" into an unreachable
+  service.
+- **The ghcr package must be pullable by the cluster.** There are no image
+  pull secrets anywhere in this cluster, so `ghcr.io/klaushofrichter/instagetter`
+  is public even though the repo is private. If it is ever made private again,
+  the pull needs a `dockerconfigjson` secret built from a **classic** PAT with
+  `read:packages` — ghcr does not accept fine-grained PATs at all.
+
+Failure mode to recognise: a revision stuck in `ContainerMissing` after a
+failed image pull stays stuck. Knative does not retry digest resolution, and
+re-applying an identical manifest creates no new revision — delete the ksvc and
+re-apply. Normal deploys avoid this because each carries a new SHA tag.
