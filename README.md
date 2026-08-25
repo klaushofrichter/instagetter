@@ -141,4 +141,4 @@ prerequisites a deploy depends on.
 
 ## License
 
-No license is granted; this is a personal project published for reference.
+[MIT](LICENSE) © 2026 Klaus Hofrichter
