@@ -306,6 +306,7 @@ export function renderPage(): string {
   var images = [];
   var progress = { loading: false, done: 0, total: 0 };
   var lastRefreshAt = null;
+  var deepLinkDone = false;
   var page = 0;
   var current = -1;
 
@@ -614,12 +615,38 @@ export function renderPage(): string {
   var busy = false;
   function setStatus(msg) { $('status').textContent = msg; }
 
+  // ?image=N opens that image, ?page=N shows that page, both 1-based to match
+  // what the UI displays. Anything out of range or unparseable is ignored and
+  // we simply stay on the first page — best effort, never an error message.
+  // image wins over page when both are present.
+  function applyDeepLink() {
+    if (deepLinkDone || !images.length) return;
+    deepLinkDone = true;
+    var params;
+    try { params = new URLSearchParams(window.location.search); } catch (e) { return; }
+
+    var rawImage = params.get('image');
+    if (rawImage !== null) {
+      var n = parseInt(rawImage, 10);
+      if (n >= 1 && n <= images.length) { open(n - 1); return; }
+      return; // out of range: ignore it, and ignore ?page too since image wins
+    }
+
+    var rawPage = params.get('page');
+    if (rawPage !== null) {
+      var p = parseInt(rawPage, 10);
+      var pages = Math.ceil(images.length / PER_PAGE);
+      if (p >= 1 && p <= pages) { page = p - 1; render(); }
+    }
+  }
+
   function load(initial) {
     return fetch('/api/images').then(function (r) { return r.json(); }).then(function (d) {
       images = d.images || [];
       progress = d.progress || { loading: false, done: 0, total: 0 };
       render();
       lastRefreshAt = d.lastRefresh || lastRefreshAt;
+      applyDeepLink();
       // Keep polling until the startup load finishes, then show the grid.
       if (progress.loading) {
         setStatus('loading ' + progress.done + '/' + (progress.total || '?'));
