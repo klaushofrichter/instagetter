@@ -306,6 +306,10 @@ export function renderPage(): string {
   var progress = { loading: false, done: 0, total: 0 };
   var lastRefreshAt = null;
   var deepLinkDone = false;
+  // Read once, up front: syncUrl() rewrites location.search as soon as the
+  // first render happens, which would otherwise erase the very parameter the
+  // deep link needs.
+  var initialSearch = window.location.search;
   var page = 0;
   var current = -1;
 
@@ -386,6 +390,7 @@ export function renderPage(): string {
     }
     if ($('pprev')) $('pprev').onclick = function () { page--; render(); window.scrollTo(0, 0); };
     if ($('pnext')) $('pnext').onclick = function () { page++; render(); window.scrollTo(0, 0); };
+    syncUrl();
   }
 
   function open(i) {
@@ -416,6 +421,7 @@ export function renderPage(): string {
       '<p class="links">' + links + '</p>';
     renderFsMeta(m);
     if (!$('modal').open) $('modal').showModal();
+    syncUrl();
   }
 
   function renderFsMeta(m) {
@@ -645,11 +651,39 @@ export function renderPage(): string {
     return -1;
   }
 
+  // Keep the address bar describing what is on screen, so copying it shares
+  // the current view. replaceState rather than pushState: stepping through
+  // images should not fill the Back button with history entries.
+  function syncUrl() {
+    if (!images.length || !deepLinkDone) return;
+    var query;
+    if ($('modal').open && current >= 0 && images[current]) {
+      var m = images[current];
+      // A bare shortcode resolves to the first slide, so identify a carousel
+      // slide by its exact slot id instead.
+      query = '?image=' + encodeURIComponent(m.imgCount > 1 ? m.id : m.shortcode);
+    } else if (page === 0) {
+      // The first page is the baseline: a bare URL always means "page 1",
+      // whereas ?page=<shortcode> would drift to another page as newer images
+      // push that post down. Home therefore lands on a clean address.
+      query = '';
+    } else {
+      var first = images[page * PER_PAGE];
+      if (!first) return;
+      query = '?page=' + encodeURIComponent(first.shortcode);
+    }
+    try {
+      if (window.location.search !== query) {
+        window.history.replaceState(null, '', query || window.location.pathname);
+      }
+    } catch (e) { /* history unavailable — the view still works */ }
+  }
+
   function applyDeepLink() {
     if (deepLinkDone || !images.length) return;
     deepLinkDone = true;
     var params;
-    try { params = new URLSearchParams(window.location.search); } catch (e) { return; }
+    try { params = new URLSearchParams(initialSearch); } catch (e) { return; }
 
     var rawImage = params.get('image');
     if (rawImage !== null) {
