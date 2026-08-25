@@ -13,8 +13,16 @@ function cacheDir(): string {
 }
 
 let items: ImageMeta[] = [];
+let progress: Progress = { loading: false, done: 0, total: 0 };
 let lastRefresh: string | null = null;
 let refreshing: Promise<RefreshResult> | null = null;
+
+export interface Progress {
+  /** True while a refresh is in flight — notably the one at startup. */
+  loading: boolean;
+  done: number;
+  total: number;
+}
 
 export interface RefreshResult {
   total: number;
@@ -32,11 +40,16 @@ export function getLastRefresh(): string | null {
   return lastRefresh;
 }
 
+export function getProgress(): Progress {
+  return progress;
+}
+
 /** Test isolation — mirrors resetReading() in steps-service. */
 export function resetCache(): void {
   items = [];
   lastRefresh = null;
   refreshing = null;
+  progress = { loading: false, done: 0, total: 0 };
 }
 
 /** Slot ids are `<shortcode>_<NN>` — letters, digits, underscore, hyphen. */
@@ -88,24 +101,39 @@ export function refresh(): Promise<RefreshResult> {
 }
 
 async function doRefresh(): Promise<RefreshResult> {
+  progress = { loading: true, done: 0, total: 0 };
+  try {
+    return await runRefresh();
+  } finally {
+    progress = { ...progress, loading: false };
+  }
+}
+
+async function runRefresh(): Promise<RefreshResult> {
   await ensureDirs();
   const index = sortNewestFirst(await fetchIndex());
   const keep = index.slice(0, maxCached());
   const keepIds = new Set(keep.map((m) => m.id));
+  progress = { loading: true, done: 0, total: keep.length };
 
   let added = 0;
   for (const meta of keep) {
     const haveThumb = await readCached('thumbs', meta.id);
     const haveImage = await readCached('images', meta.id);
-    if (haveThumb && haveImage) continue;
+    if (haveThumb && haveImage) {
+      progress = { ...progress, done: progress.done + 1 };
+      continue;
+    }
     try {
       const [thumb, full] = await Promise.all([fetchThumb(meta.id), fetchImage(meta.id)]);
       await fs.writeFile(filePath('thumbs', meta.id), thumb);
       await fs.writeFile(filePath('images', meta.id), full);
       added += 1;
+      progress = { ...progress, done: progress.done + 1 };
     } catch (err) {
       // One bad object must not abort the whole refresh.
       console.error(`refresh: skipping ${meta.id}:`, (err as Error).message);
+      progress = { ...progress, done: progress.done + 1 };
     }
   }
 

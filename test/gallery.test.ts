@@ -25,6 +25,7 @@ describe('GET /api/images', () => {
     expect(response.status).toBe(200);
     expect(response.body.images).toEqual([]);
     expect(response.body.limit).toBe(99);
+    expect(response.body.progress).toEqual({ loading: false, done: 0, total: 0 });
   });
 });
 
