@@ -46,6 +46,21 @@ export function renderPage(): string {
   h1 { font-size: 1.4rem; margin: 0; letter-spacing: -.02em; }
   h1 .mark { width: 1em; height: 1em; border-radius: 4px; margin-right: .5rem; vertical-align: -.12em; }
   .spacer { flex: 1 1 auto; }
+  .tools { display: flex; align-items: center; gap: .5rem; }
+  /* Two tidy rows on a phone instead of an unpredictable wrap: name pinned
+     right on the first, count left and controls right on the second. */
+  @media (max-width: 640px) {
+    header {
+      display: grid; grid-template-columns: auto 1fr;
+      grid-template-areas: "title profile" "status tools";
+      align-items: center; gap: .35rem .6rem;
+    }
+    header h1 { grid-area: title; }
+    header > a { grid-area: profile; justify-self: end; }
+    header .spacer { display: none; }
+    header .status { grid-area: status; justify-self: start; }
+    header .tools { grid-area: tools; justify-self: end; }
+  }
   a { color: var(--accent); }
   button {
     font: inherit; color: var(--btn-fg); background: var(--btn);
@@ -134,12 +149,22 @@ export function renderPage(): string {
      no metadata, no counter. Hide the nav arrows too: the request is the
      picture and nothing else. Cursor keys still navigate. */
   #stage:fullscreen { background: #000; }
+  #stage.faux-fs {
+    position: fixed; inset: 0; width: 100vw; height: 100vh;
+    z-index: 2147483647; background: #000;
+  }
   #stage:fullscreen .nav { display: none; }
+  #stage.faux-fs .nav { display: none; }
   /* Fill the screen in fullscreen, scaling small images UP as well as large
      ones down. max-width/max-height only cap, they never enlarge — so set
      explicit dimensions and let object-fit:contain preserve the aspect ratio
      and letterbox whatever is left over. */
   #stage:fullscreen img {
+    width: 100vw; height: 100vh;
+    max-width: none; max-height: none;
+    object-fit: contain; cursor: pointer;
+  }
+  #stage.faux-fs img {
     width: 100vw; height: 100vh;
     max-width: none; max-height: none;
     object-fit: contain; cursor: pointer;
@@ -151,6 +176,7 @@ export function renderPage(): string {
     background: rgba(0,0,0,.55); color: #fff; border-color: transparent; }
   .fs-close:hover { background: rgba(0,0,0,.75); border-color: transparent; }
   #stage:fullscreen .fs-close { display: inline-grid; }
+  #stage.faux-fs .fs-close { display: inline-grid; }
   /* Fingers are coarser than mice: give the fullscreen X a larger hit area. */
   @media (pointer: coarse) {
     .fs-close { width: 2.9rem; height: 2.9rem; top: .5rem; right: .5rem; }
@@ -160,6 +186,14 @@ export function renderPage(): string {
   /* Fullscreen metadata overlay, toggled with the space bar. Only ever shown
      inside :fullscreen, so it cannot intrude on the normal detail view. */
   .fs-meta { display: none; }
+  #stage.faux-fs .fs-meta.on {
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    position: absolute; left: 0; right: 0; bottom: 0;
+    min-height: 16vh; padding: .85rem 2rem;
+    background: var(--fsmeta-bg); color: var(--fsmeta-fg);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    text-align: center; z-index: 3;
+  }
   #stage:fullscreen .fs-meta.on {
     display: flex; flex-direction: column; justify-content: center; align-items: center;
     position: absolute; left: 0; right: 0; bottom: 0;
@@ -182,6 +216,7 @@ export function renderPage(): string {
     <a href="${PROFILE_URL}" target="_blank" rel="noopener noreferrer">@klaushofrichter</a>
     <span class="spacer"></span>
     <span class="status" id="status"></span>
+    <div class="tools">
     <button id="theme" class="icon-btn" title="Toggle light / dark" aria-label="Toggle light or dark theme">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
     </button>
@@ -194,6 +229,7 @@ export function renderPage(): string {
     <button id="home" class="icon-btn" title="Back to the first page" aria-label="Back to the first page">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10"/></svg>
     </button>
+    </div>
   </header>
   <div id="content"></div>
 </div>
@@ -311,6 +347,7 @@ export function renderPage(): string {
     var pages = Math.ceil(images.length / PER_PAGE);
     if (page >= pages) page = pages - 1;
     if (page < 0) page = 0;
+    setStatus((page + 1) + '/' + pages + ' \u00b7 ' + images.length + ' images');
     var slice = images.slice(page * PER_PAGE, page * PER_PAGE + PER_PAGE);
     var html = '<div class="grid">';
     for (var i = 0; i < slice.length; i++) {
@@ -403,26 +440,19 @@ export function renderPage(): string {
   var ZONE_TOP = 0.12;    // top strip always returns to the detail view
 
   $('full').onclick = function (e) {
-    if (!document.fullscreenElement) { enterFullscreen(); return; }
+    if (!inFullscreen()) { enterFullscreen(); return; }
     var w = window.innerWidth, h = window.innerHeight;
     // The top strip wins over the side zones. The X lives in the top right,
     // which would otherwise be inside "next image" — a near miss on a phone
     // would advance instead of closing.
-    if (e.clientY < h * ZONE_TOP) {
-      document.exitFullscreen().catch(function (err) { console.error('exitFullscreen', err); });
-      return;
-    }
+    if (e.clientY < h * ZONE_TOP) { leaveFullscreen(); return; }
     if (e.clientY > h * ZONE_BOTTOM) { toggleFsMeta(); return; }
     if (e.clientX < w * ZONE_SIDE) { step(-1); return; }
     if (e.clientX > w * (1 - ZONE_SIDE)) { step(1); return; }
     // Anywhere else — the top and the middle — returns to the detail view.
-    document.exitFullscreen().catch(function (err) { console.error('exitFullscreen', err); });
+    leaveFullscreen();
   };
-  $('fsclose').onclick = function () {
-    if (document.fullscreenElement) {
-      document.exitFullscreen().catch(function (e) { console.error('exitFullscreen', e); });
-    }
-  };
+  $('fsclose').onclick = function () { leaveFullscreen(); };
 
   $('prev').onclick = function () { step(-1); };
   $('next').onclick = function () { step(1); };
@@ -445,12 +475,37 @@ export function renderPage(): string {
     if (e.target === $('about')) $('about').close();
   });
 
+  // iPhone Safari implements no element Fullscreen API at all, so the button
+  // and tap-to-enter did nothing there and failed silently. Fall back to a
+  // fixed, viewport-filling stage, which behaves the same from the user's side.
+  function inFullscreen() {
+    return !!document.fullscreenElement || $('stage').classList.contains('faux-fs');
+  }
+
   function enterFullscreen() {
     var el = $('stage');
     var req = el.requestFullscreen || el.webkitRequestFullscreen;
-    if (!req) return;
+    if (!req) { el.classList.add('faux-fs'); updateFsUi(); return; }
     var r = req.call(el);
-    if (r && r.catch) r.catch(function (e) { console.error('requestFullscreen failed', e); });
+    if (r && r.catch) {
+      r.catch(function (e) {
+        console.error('requestFullscreen failed, using fallback', e);
+        el.classList.add('faux-fs');
+        updateFsUi();
+      });
+    }
+  }
+
+  function leaveFullscreen() {
+    var el = $('stage');
+    if (el.classList.contains('faux-fs')) {
+      el.classList.remove('faux-fs');
+      updateFsUi();
+      return;
+    }
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(function (e) { console.error('exitFullscreen', e); });
+    }
   }
 
   $('fs').onclick = function () {
@@ -461,24 +516,23 @@ export function renderPage(): string {
     //    dialog, so the grid paints on top of the modal.
     // A descendant of the open dialog enters the top layer above it and
     // renders only its own subtree, which is exactly the image.
-    if (document.fullscreenElement) {
-      document.exitFullscreen().catch(function (e) { console.error('exitFullscreen', e); });
-    } else {
-      enterFullscreen();
-    }
+    if (inFullscreen()) leaveFullscreen();
+    else enterFullscreen();
   };
 
   var ICON_EXPAND = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>';
   var ICON_COMPRESS = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8h3a2 2 0 0 0 2-2V3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/></svg>';
 
   // Swap the icon rather than textContent, which would wipe out the SVG.
-  document.addEventListener('fullscreenchange', function () {
-    var on = !!document.fullscreenElement;
+  function updateFsUi() {
+    var on = inFullscreen();
     $('fs').innerHTML = on ? ICON_COMPRESS : ICON_EXPAND;
     $('fs').setAttribute('aria-label', on ? 'Exit fullscreen' : 'Enter fullscreen');
     $('fs').setAttribute('title', on ? 'Exit fullscreen (Esc)' : 'Fullscreen (f)');
     if (!on) $('fsmeta').classList.remove('on');
-  });
+  }
+
+  document.addEventListener('fullscreenchange', updateFsUi);
   // Land on the page holding whatever was last on screen — the viewer may have
   // paged well past where they started, including while fullscreen.
   function syncGridToCurrent() {
@@ -506,12 +560,15 @@ export function renderPage(): string {
     else if (e.key === 'f' || e.key === 'F') { $('fs').click(); }
     else if (e.key === ' ' || e.code === 'Space') {
       // Only in fullscreen, and preventDefault so the page does not scroll.
-      if (document.fullscreenElement) { e.preventDefault(); toggleFsMeta(); }
+      if (inFullscreen()) { e.preventDefault(); toggleFsMeta(); }
     }
     else if (e.key === 'Escape') {
       // In fullscreen let the browser consume Escape to exit it first. Outside
       // fullscreen, close explicitly — the native dismissal fires no event here.
-      if (!document.fullscreenElement) { e.preventDefault(); closeDetail(); }
+      if (inFullscreen()) {
+        // No native fullscreen to dismiss in fallback mode, so handle it here.
+        if (!document.fullscreenElement) { e.preventDefault(); leaveFullscreen(); }
+      } else { e.preventDefault(); closeDetail(); }
     }
   });
 
