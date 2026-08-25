@@ -1,57 +1,284 @@
+const PROFILE_URL = 'https://www.instagram.com/klaushofrichter';
+
 export function renderPage(): string {
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
 <title>instagetter</title>
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <style>
   :root {
-    color-scheme: light dark;
-    --bg: #ffffff;
-    --fg: #14161a;
-    --muted: #5c6470;
-    --line: #e3e6ea;
-    --accent: #c13584;
+    --bg: #ffffff; --fg: #14161a; --muted: #6b7280; --line: #e5e7eb;
+    --card: #fafafa; --accent: #c13584; --overlay: rgba(255,255,255,.96);
+    --btn: #f3f4f6; --btn-fg: #14161a;
   }
+  :root:not([data-theme="light"]) { color-scheme: light dark; }
   @media (prefers-color-scheme: dark) {
-    :root { --bg: #14161a; --fg: #eef1f5; --muted: #9aa3af; --line: #2a2f38; }
+    :root:not([data-theme="light"]) {
+      --bg: #0f1115; --fg: #eef1f5; --muted: #9aa3af; --line: #262b33;
+      --card: #171a20; --overlay: rgba(10,12,15,.97);
+      --btn: #232830; --btn-fg: #eef1f5;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f1115; --fg: #eef1f5; --muted: #9aa3af; --line: #262b33;
+    --card: #171a20; --overlay: rgba(10,12,15,.97);
+    --btn: #232830; --btn-fg: #eef1f5;
   }
   * { box-sizing: border-box; }
   body {
-    margin: 0;
-    min-height: 100vh;
-    display: grid;
-    place-items: center;
-    padding: 2rem 1.25rem;
-    background: var(--bg);
-    color: var(--fg);
-    font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
   }
-  main { width: 100%; max-width: 34rem; }
-  h1 { margin: 0 0 .25rem; font-size: 1.75rem; letter-spacing: -.02em; }
-  p.lede { margin: 0 0 1.75rem; color: var(--muted); }
-  .card { border: 1px solid var(--line); border-radius: 12px; padding: 1.25rem 1.4rem; }
-  .row { display: flex; justify-content: space-between; gap: 1rem; padding: .45rem 0; }
-  .row + .row { border-top: 1px solid var(--line); }
-  .row span:first-child { color: var(--muted); }
-  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .9em; }
-  .dot { display: inline-block; width: .55rem; height: .55rem; border-radius: 50%; background: var(--accent); margin-right: .45rem; }
-  footer { margin-top: 1.5rem; color: var(--muted); font-size: .85rem; }
+  .wrap { max-width: 62rem; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+  header { display: flex; flex-wrap: wrap; gap: .75rem 1rem; align-items: center; margin-bottom: 1.25rem; }
+  h1 { font-size: 1.4rem; margin: 0; letter-spacing: -.02em; }
+  h1 .dot { display: inline-block; width: .5rem; height: .5rem; border-radius: 50%; background: var(--accent); margin-right: .5rem; vertical-align: middle; }
+  .spacer { flex: 1 1 auto; }
+  a { color: var(--accent); }
+  button {
+    font: inherit; color: var(--btn-fg); background: var(--btn);
+    border: 1px solid var(--line); border-radius: 8px; padding: .4rem .8rem; cursor: pointer;
+  }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .status { color: var(--muted); font-size: .85rem; min-height: 1.2em; }
+
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; }
+  @media (max-width: 640px) { .grid { grid-template-columns: 1fr; gap: .75rem; } }
+  .tile {
+    position: relative; aspect-ratio: 1/1; overflow: hidden; border-radius: 10px;
+    background: var(--card); border: 1px solid var(--line); cursor: pointer; padding: 0;
+  }
+  .tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .tile .badge {
+    position: absolute; top: .4rem; right: .4rem; background: rgba(0,0,0,.6); color: #fff;
+    font-size: .7rem; padding: .1rem .35rem; border-radius: 5px;
+  }
+  .pager { display: flex; align-items: center; justify-content: center; gap: 1rem; margin-top: 1.25rem; color: var(--muted); }
+  .empty { border: 1px dashed var(--line); border-radius: 12px; padding: 2.5rem 1rem; text-align: center; color: var(--muted); }
+
+  dialog#modal {
+    border: none; padding: 0; background: transparent; max-width: 100vw; max-height: 100vh;
+    width: 100%; height: 100%; margin: 0; color: var(--fg);
+  }
+  dialog#modal::backdrop { background: var(--overlay); }
+  .modal-inner { display: flex; flex-direction: column; height: 100vh; background: var(--bg); }
+  .modal-bar { display: flex; gap: .5rem; align-items: center; padding: .6rem .8rem; border-bottom: 1px solid var(--line); }
+  /* min-height:0 is required: a flex child defaults to min-height:auto and so
+     refuses to shrink below the intrinsic image height, pushing the metadata
+     panel off-screen and cropping tall images. */
+  .stage { flex: 1 1 auto; min-height: 0; position: relative; display: grid; place-items: center; overflow: hidden; background: var(--card); }
+  /* Absolutely positioned so the percentage caps resolve against the stage's
+     padding box. As a grid/flex child the row is auto-sized, so max-height:100%
+     has no definite basis and is ignored — the image then overflows. */
+  .stage img { position: absolute; inset: 0; margin: auto; max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+  .nav {
+    position: absolute; top: 50%; transform: translateY(-50%);
+    width: 2.6rem; height: 2.6rem; border-radius: 50%; display: grid; place-items: center;
+    background: rgba(0,0,0,.55); color: #fff; border: none; font-size: 1.2rem;
+  }
+  .nav.prev { left: .75rem; } .nav.next { right: .75rem; }
+  .meta { padding: .8rem 1rem; border-top: 1px solid var(--line); max-height: 34vh; overflow: auto; }
+  .meta .caption { margin: 0 0 .5rem; }
+  .meta dl { display: grid; grid-template-columns: auto 1fr; gap: .15rem .75rem; margin: 0; font-size: .85rem; }
+  .meta dt { color: var(--muted); }
+  .meta dd { margin: 0; }
+  :fullscreen .modal-inner { height: 100vh; }
 </style>
 </head>
 <body>
-<main>
-  <h1><span class="dot"></span>instagetter</h1>
-  <p class="lede">Placeholder page — the real interface comes later.</p>
-  <div class="card">
-    <div class="row"><span>Status</span><span>running</span></div>
-    <div class="row"><span>Health check</span><span><code>GET /health</code></span></div>
-    <div class="row"><span>API</span><span><code>GET /api/status</code> (bearer token)</span></div>
+<div class="wrap">
+  <header>
+    <h1><span class="dot"></span>instagetter</h1>
+    <a href="${PROFILE_URL}" target="_blank" rel="noopener noreferrer">@klaushofrichter</a>
+    <span class="spacer"></span>
+    <span class="status" id="status"></span>
+    <button id="theme" title="Toggle light / dark">Theme</button>
+    <button id="refresh">Refresh</button>
+  </header>
+  <div id="content"></div>
+</div>
+
+<dialog id="modal">
+  <div class="modal-inner">
+    <div class="modal-bar">
+      <span id="counter" class="status"></span>
+      <span class="spacer"></span>
+      <button id="fs">Fullscreen</button>
+      <a id="dl"><button>Download</button></a>
+      <button id="close">Close</button>
+    </div>
+    <div class="stage">
+      <button class="nav prev" id="prev" aria-label="Previous image">&#8249;</button>
+      <img id="full" alt="">
+      <button class="nav next" id="next" aria-label="Next image">&#8250;</button>
+    </div>
+    <div class="meta" id="meta"></div>
   </div>
-  <footer>insta.skylar.technology</footer>
-</main>
+</dialog>
+
+<script>
+(function () {
+  var PER_PAGE = 9;
+  var images = [];
+  var page = 0;
+  var current = -1;
+
+  var $ = function (id) { return document.getElementById(id); };
+  var esc = function (s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  };
+
+  // Theme: remember the viewer's explicit choice, fall back to the OS setting.
+  try {
+    var saved = localStorage.getItem('theme');
+    if (saved) document.documentElement.setAttribute('data-theme', saved);
+  } catch (e) { /* private mode */ }
+  $('theme').onclick = function () {
+    var isDark = getComputedStyle(document.body).backgroundColor === 'rgb(15, 17, 21)';
+    var next = isDark ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('theme', next); } catch (e) {}
+  };
+
+  function fmtDate(iso) {
+    if (!iso) return 'unknown';
+    var d = new Date(iso);
+    return isNaN(d.getTime()) ? iso : d.toLocaleString();
+  }
+
+  function render() {
+    var el = $('content');
+    if (!images.length) {
+      el.innerHTML = '<div class="empty">No images cached yet.<br>Press <strong>Refresh</strong> to pull the latest from S3.</div>';
+      return;
+    }
+    var pages = Math.ceil(images.length / PER_PAGE);
+    if (page >= pages) page = pages - 1;
+    if (page < 0) page = 0;
+    var slice = images.slice(page * PER_PAGE, page * PER_PAGE + PER_PAGE);
+    var html = '<div class="grid">';
+    for (var i = 0; i < slice.length; i++) {
+      var m = slice[i];
+      var idx = page * PER_PAGE + i;
+      var badge = m.imgCount > 1 ? '<span class="badge">' + m.imgIndex + '/' + m.imgCount + '</span>' : '';
+      html += '<button class="tile" data-idx="' + idx + '">' +
+              '<img loading="lazy" src="/thumb/' + encodeURIComponent(m.id) + '.jpg" alt="' + esc(m.caption).slice(0, 120) + '">' +
+              badge + '</button>';
+    }
+    html += '</div>';
+    html += '<div class="pager">' +
+            '<button id="pprev"' + (page === 0 ? ' disabled' : '') + '>Previous</button>' +
+            '<span>Page ' + (page + 1) + ' of ' + pages + ' &middot; ' + images.length + ' images</span>' +
+            '<button id="pnext"' + (page >= pages - 1 ? ' disabled' : '') + '>Next</button>' +
+            '</div>';
+    el.innerHTML = html;
+
+    var tiles = el.querySelectorAll('.tile');
+    for (var t = 0; t < tiles.length; t++) {
+      tiles[t].onclick = function () { open(Number(this.getAttribute('data-idx'))); };
+    }
+    if ($('pprev')) $('pprev').onclick = function () { page--; render(); window.scrollTo(0, 0); };
+    if ($('pnext')) $('pnext').onclick = function () { page++; render(); window.scrollTo(0, 0); };
+  }
+
+  function open(i) {
+    if (i < 0 || i >= images.length) return;
+    current = i;
+    var m = images[i];
+    $('full').src = '/image/' + encodeURIComponent(m.id) + '.jpg';
+    $('full').alt = m.caption || 'Instagram image';
+    $('dl').href = '/download/' + encodeURIComponent(m.id) + '.jpg';
+    $('counter').textContent = (i + 1) + ' of ' + images.length;
+    var rows = '';
+    rows += '<dt>Taken</dt><dd>' + esc(fmtDate(m.takenAt)) + '</dd>';
+    if (m.location) rows += '<dt>Location</dt><dd>' + esc(m.location) + '</dd>';
+    if (m.imgCount > 1) rows += '<dt>Carousel</dt><dd>image ' + m.imgIndex + ' of ' + m.imgCount + '</dd>';
+    rows += '<dt>Size</dt><dd>' + m.width + ' &times; ' + m.height + '</dd>';
+    if (m.likes != null) rows += '<dt>Likes</dt><dd>' + m.likes + '</dd>';
+    rows += '<dt>Post</dt><dd><a href="' + esc(m.postUrl) + '" target="_blank" rel="noopener noreferrer">open on Instagram</a></dd>';
+    $('meta').innerHTML = '<p class="caption">' + (m.caption ? esc(m.caption) : '<em>no caption</em>') + '</p><dl>' + rows + '</dl>';
+    if (!$('modal').open) $('modal').showModal();
+    // Keep the grid on the page the image belongs to.
+    page = Math.floor(i / PER_PAGE);
+  }
+
+  function step(delta) {
+    var next = current + delta;
+    if (next < 0) next = images.length - 1;
+    if (next >= images.length) next = 0;
+    open(next);
+  }
+
+  $('prev').onclick = function () { step(-1); };
+  $('next').onclick = function () { step(1); };
+  $('close').onclick = function () { $('modal').close(); };
+  $('fs').onclick = function () {
+    // Fullscreen the dialog itself so the nav buttons and key handler stay live.
+    var el = $('modal');
+    if (document.fullscreenElement) document.exitFullscreen();
+    else if (el.requestFullscreen) el.requestFullscreen();
+  };
+  $('modal').addEventListener('close', function () { render(); });
+
+  document.addEventListener('keydown', function (e) {
+    if (!$('modal').open) return;
+    if (e.key === 'ArrowLeft') { e.preventDefault(); step(-1); }
+    else if (e.key === 'ArrowRight') { e.preventDefault(); step(1); }
+    else if (e.key === 'f' || e.key === 'F') { $('fs').click(); }
+    // Escape closes the dialog natively; if we are fullscreen the browser
+    // consumes the first Escape to exit fullscreen, which is what we want.
+  });
+
+  var busy = false;
+  function setStatus(msg) { $('status').textContent = msg; }
+
+  function load(initial) {
+    return fetch('/api/images').then(function (r) { return r.json(); }).then(function (d) {
+      images = d.images || [];
+      render();
+      if (initial && d.lastRefresh) setStatus('updated ' + fmtDate(d.lastRefresh));
+    });
+  }
+
+  $('refresh').onclick = function () {
+    if (busy) return;
+    busy = true;
+    $('refresh').disabled = true;
+    setStatus('refreshing…');
+    fetch('/api/refresh', { method: 'POST' })
+      .then(function (r) {
+        if (r.status === 429) {
+          return r.json().then(function (d) {
+            setStatus('slow down — retry in ' + Math.ceil((d.retryInMs || 5000) / 1000) + 's');
+            return null;
+          });
+        }
+        return r.json();
+      })
+      .then(function (d) {
+        if (d) {
+          images = d.images || [];
+          render();
+          setStatus(d.added + ' new, ' + images.length + ' cached');
+        }
+      })
+      .catch(function () { setStatus('refresh failed'); })
+      .finally(function () {
+        // Match the server's 5s gate so the button cannot outrun it.
+        setTimeout(function () { busy = false; $('refresh').disabled = false; }, 5000);
+      });
+  };
+
+  load(true);
+})();
+</script>
 </body>
 </html>
 `;

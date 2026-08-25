@@ -11,6 +11,11 @@ const FAVICON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"
 </svg>
 `;
 
+// Public, but deliberately not fed to search engines.
+indexRouter.get('/robots.txt', (_req: Request, res: Response) => {
+  res.status(200).type('text/plain').send('User-agent: *\nDisallow: /\n');
+});
+
 indexRouter.get('/favicon.svg', (_req: Request, res: Response) => {
   res.status(200).type('image/svg+xml').send(FAVICON_SVG);
 });
