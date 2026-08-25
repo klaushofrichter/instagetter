@@ -74,6 +74,9 @@ async function embedExif(file, meta) {
     args.push(`-IPTC:Sub-location=${meta.location}`, `-XMP-photoshop:City=${meta.location}`);
   }
   if (meta.postUrl) args.push(`-XMP-dc:Source=${meta.postUrl}`);
+  // The shortcode is already implicit in Source, but record it explicitly too:
+  // it is the stable key the gallery's permalinks resolve against.
+  if (meta.shortcode) args.push(`-XMP-dc:Identifier=${meta.shortcode}`);
   args.push(file);
   await execFileAsync('exiftool', args);
 }
