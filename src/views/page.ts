@@ -97,6 +97,7 @@ export function renderPage(): string {
   .about-logo { width: 1.9rem; height: 1.9rem; border-radius: 6px; display: block; }
   #about p { margin: 0 0 .7rem; }
   .about-links { color: var(--muted); font-size: .87rem; margin-bottom: 0 !important; }
+  .about-updated { color: var(--muted); font-size: .87rem; }
 
   dialog#modal {
     border: none; padding: 0; background: transparent; max-width: 100vw; max-height: 100vh;
@@ -190,6 +191,9 @@ export function renderPage(): string {
     <button id="about-open" class="icon-btn" title="About" aria-label="About this site">
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 16v-5"/><path d="M12 8h.01"/></svg>
     </button>
+    <button id="home" class="icon-btn" title="Back to the first page" aria-label="Back to the first page">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10"/></svg>
+    </button>
   </header>
   <div id="content"></div>
 </div>
@@ -210,6 +214,7 @@ export function renderPage(): string {
     <p>It extracts the newest posts from a single Instagram account, stores them
       in S3 at full resolution with their metadata, and serves them as a
       responsive grid with a lightbox. The site itself never talks to Instagram.</p>
+    <p class="about-updated" id="about-updated"></p>
     <p class="about-links">
       <a href="${PROFILE_URL}" target="_blank" rel="noopener noreferrer">@klaushofrichter</a>
       &middot; <a href="${REPO_URL}" target="_blank" rel="noopener noreferrer">source on GitHub</a>
@@ -252,6 +257,7 @@ export function renderPage(): string {
   var PER_PAGE = 9;
   var images = [];
   var progress = { loading: false, done: 0, total: 0 };
+  var lastRefreshAt = null;
   var page = 0;
   var current = -1;
 
@@ -317,9 +323,11 @@ export function renderPage(): string {
     }
     html += '</div>';
     html += '<div class="pager">' +
-            '<button id="pprev"' + (page === 0 ? ' disabled' : '') + '>Previous</button>' +
+            '<button id="pprev" class="icon-btn" aria-label="Previous page" title="Previous page"' + (page === 0 ? ' disabled' : '') + '>' +
+            '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>' +
             '<span>Page ' + (page + 1) + ' of ' + pages + ' &middot; ' + images.length + ' images</span>' +
-            '<button id="pnext"' + (page >= pages - 1 ? ' disabled' : '') + '>Next</button>' +
+            '<button id="pnext" class="icon-btn" aria-label="Next page" title="Next page"' + (page >= pages - 1 ? ' disabled' : '') + '>' +
+            '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>' +
             '</div>';
     el.innerHTML = html;
 
@@ -349,8 +357,6 @@ export function renderPage(): string {
     $('meta').innerHTML = '<p class="caption">' + (m.caption ? esc(m.caption) : '<em>no caption</em>') + '</p><dl>' + rows + '</dl>';
     renderFsMeta(m);
     if (!$('modal').open) $('modal').showModal();
-    // Keep the grid on the page the image belongs to.
-    page = Math.floor(i / PER_PAGE);
   }
 
   function renderFsMeta(m) {
@@ -411,8 +417,19 @@ export function renderPage(): string {
 
   $('prev').onclick = function () { step(-1); };
   $('next').onclick = function () { step(1); };
-  $('close').onclick = function () { $('modal').close(); };
-  $('about-open').onclick = function () { $('about').showModal(); };
+  $('close').onclick = closeDetail;
+  $('about-open').onclick = function () {
+    $('about-updated').textContent = lastRefreshAt
+      ? 'Content last updated ' + fmtDate(lastRefreshAt) + ' \u00b7 ' + images.length + ' images'
+      : '';
+    $('about').showModal();
+  };
+
+  $('home').onclick = function () {
+    page = 0;
+    render();
+    window.scrollTo(0, 0);
+  };
   $('about-close').onclick = function () { $('about').close(); };
   // Click the backdrop to dismiss.
   $('about').addEventListener('click', function (e) {
@@ -453,7 +470,25 @@ export function renderPage(): string {
     $('fs').setAttribute('title', on ? 'Exit fullscreen (Esc)' : 'Fullscreen (f)');
     if (!on) $('fsmeta').classList.remove('on');
   });
-  $('modal').addEventListener('close', function () { render(); });
+  // Land on the page holding whatever was last on screen — the viewer may have
+  // paged well past where they started, including while fullscreen.
+  function syncGridToCurrent() {
+    if (current >= 0) page = Math.floor(current / PER_PAGE);
+    render();
+    var tile = document.querySelector('.tile[data-idx="' + current + '"]');
+    if (tile && tile.scrollIntoView) tile.scrollIntoView({ block: 'center' });
+  }
+
+  // Do the work explicitly rather than relying on the dialog's close event:
+  // this browser closes a <dialog> without dispatching close or cancel, so a
+  // listener never runs and the grid was left on its old page.
+  function closeDetail() {
+    if ($('modal').open) $('modal').close();
+    syncGridToCurrent();
+  }
+
+  // Kept for browsers that do dispatch it; a second render is harmless.
+  $('modal').addEventListener('close', syncGridToCurrent);
 
   document.addEventListener('keydown', function (e) {
     if (!$('modal').open) return;
@@ -464,8 +499,11 @@ export function renderPage(): string {
       // Only in fullscreen, and preventDefault so the page does not scroll.
       if (document.fullscreenElement) { e.preventDefault(); toggleFsMeta(); }
     }
-    // Escape closes the dialog natively; if we are fullscreen the browser
-    // consumes the first Escape to exit fullscreen, which is what we want.
+    else if (e.key === 'Escape') {
+      // In fullscreen let the browser consume Escape to exit it first. Outside
+      // fullscreen, close explicitly — the native dismissal fires no event here.
+      if (!document.fullscreenElement) { e.preventDefault(); closeDetail(); }
+    }
   });
 
   var busy = false;
@@ -476,7 +514,7 @@ export function renderPage(): string {
       images = d.images || [];
       progress = d.progress || { loading: false, done: 0, total: 0 };
       render();
-      if (initial && d.lastRefresh) setStatus('updated ' + fmtDate(d.lastRefresh));
+      lastRefreshAt = d.lastRefresh || lastRefreshAt;
       // Keep polling until the startup load finishes, then show the grid.
       if (progress.loading) {
         setStatus('loading ' + progress.done + '/' + (progress.total || '?'));
@@ -507,6 +545,7 @@ export function renderPage(): string {
           images = d.images || [];
           progress = d.progress || progress;
           render();
+          lastRefreshAt = d.lastRefresh || lastRefreshAt;
           setStatus(d.added + ' new, ' + images.length + ' cached');
         }
       })
