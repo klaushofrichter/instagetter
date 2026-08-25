@@ -131,7 +131,7 @@ export function renderPage(): string {
   #stage:fullscreen img {
     width: 100vw; height: 100vh;
     max-width: none; max-height: none;
-    object-fit: contain; cursor: default;
+    object-fit: contain; cursor: pointer;
   }
   /* The close control must live inside the stage: nothing outside the
      fullscreen element renders. Same .icon-btn dimensions as the bar's X, and
@@ -140,6 +140,11 @@ export function renderPage(): string {
     background: rgba(0,0,0,.55); color: #fff; border-color: transparent; }
   .fs-close:hover { background: rgba(0,0,0,.75); border-color: transparent; }
   #stage:fullscreen .fs-close { display: inline-grid; }
+  /* Fingers are coarser than mice: give the fullscreen X a larger hit area. */
+  @media (pointer: coarse) {
+    .fs-close { width: 2.9rem; height: 2.9rem; top: .5rem; right: .5rem; }
+    .fs-close svg { width: 1.4rem; height: 1.4rem; }
+  }
   .stage img { cursor: zoom-in; }
   /* Fullscreen metadata overlay, toggled with the space bar. Only ever shown
      inside :fullscreen, so it cannot intrude on the normal detail view. */
@@ -353,8 +358,29 @@ export function renderPage(): string {
 
   // A real click carries the user activation requestFullscreen() needs, so
   // this works where a programmatic call would be rejected.
-  $('full').onclick = function () {
-    if (!document.fullscreenElement) enterFullscreen();
+  // Tap zones. In fullscreen the <img> spans the whole viewport (100vw/100vh
+  // with object-fit:contain), so a tap anywhere that is not the X or the
+  // metadata panel lands here and can be routed by position — no extra
+  // chrome needed on a phone.
+  var ZONE_SIDE = 0.25;   // left / right quarter navigates
+  var ZONE_BOTTOM = 0.78; // below this toggles the metadata panel
+  var ZONE_TOP = 0.12;    // top strip always returns to the detail view
+
+  $('full').onclick = function (e) {
+    if (!document.fullscreenElement) { enterFullscreen(); return; }
+    var w = window.innerWidth, h = window.innerHeight;
+    // The top strip wins over the side zones. The X lives in the top right,
+    // which would otherwise be inside "next image" — a near miss on a phone
+    // would advance instead of closing.
+    if (e.clientY < h * ZONE_TOP) {
+      document.exitFullscreen().catch(function (err) { console.error('exitFullscreen', err); });
+      return;
+    }
+    if (e.clientY > h * ZONE_BOTTOM) { toggleFsMeta(); return; }
+    if (e.clientX < w * ZONE_SIDE) { step(-1); return; }
+    if (e.clientX > w * (1 - ZONE_SIDE)) { step(1); return; }
+    // Anywhere else — the top and the middle — returns to the detail view.
+    document.exitFullscreen().catch(function (err) { console.error('exitFullscreen', err); });
   };
   $('fsclose').onclick = function () {
     if (document.fullscreenElement) {

@@ -156,6 +156,20 @@ middle of a black field.
 The space-bar overlay is a translucent panel across the bottom of the screen
 with the caption and facts centred, tinted to match the active theme.
 
+On a touch screen the whole picture is divided into tap zones, so fullscreen
+needs no visible controls beyond the `X`:
+
+| Tap where | Effect |
+|---|---|
+| top strip, or the middle | back to the detail view |
+| left quarter | previous image |
+| right quarter | next image |
+| bottom fifth | show or hide the metadata |
+
+The top strip takes precedence over the side zones, so a near miss on the `X`
+closes fullscreen rather than skipping to the next image. The `X` itself is
+enlarged on touch devices.
+
 ## Deployment
 
 A promotion flow:
