@@ -39,11 +39,26 @@ export function resetCache(): void {
   refreshing = null;
 }
 
+/** Slot ids are `<shortcode>_<NN>` — letters, digits, underscore, hyphen. */
+const ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+
+export function isValidId(id: string): boolean {
+  return ID_PATTERN.test(id);
+}
+
+/**
+ * Guard here rather than trusting callers: this is the function that actually
+ * touches the filesystem, so the check belongs with the access. basename()
+ * strips any directory component, so the result cannot escape the cache dir
+ * even if the pattern above is ever loosened.
+ */
 function filePath(kind: 'images' | 'thumbs', id: string): string {
-  return path.join(cacheDir(), kind, `${id}.jpg`);
+  if (!isValidId(id)) throw new Error(`invalid slot id: ${id}`);
+  return path.join(cacheDir(), kind, `${path.basename(id)}.jpg`);
 }
 
 export async function readCached(kind: 'images' | 'thumbs', id: string): Promise<Buffer | null> {
+  if (!isValidId(id)) return null;
   try {
     return await fs.readFile(filePath(kind, id));
   } catch {

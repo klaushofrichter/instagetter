@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { promises as fs } from 'fs';
 import path from 'path';
-import { refresh, getItems, resetCache, readCached } from '../src/cache';
+import { refresh, getItems, resetCache, readCached, isValidId } from '../src/cache';
 import { setClient } from '../src/s3';
 import { installFakeS3, meta } from './fakeS3';
 
@@ -102,5 +102,26 @@ describe('refresh', () => {
 
     const stat = await fs.stat(path.join(cacheDir, 'images', 'z_1.jpg'));
     expect(stat.size).toBeGreaterThan(0);
+  });
+});
+
+describe('slot id validation', () => {
+  it('accepts real slot ids', () => {
+    expect(isValidId('DcPbrvdCtlY_01')).toBe(true);
+    expect(isValidId('DS0ovdXklvR_02')).toBe(true);
+  });
+
+  it('rejects ids containing path separators or traversal', () => {
+    expect(isValidId('../../etc/passwd')).toBe(false);
+    expect(isValidId('a/b')).toBe(false);
+    expect(isValidId('..')).toBe(false);
+    expect(isValidId('a.jpg')).toBe(false);
+    expect(isValidId('')).toBe(false);
+  });
+
+  it('refuses to read a traversing id even when called directly', async () => {
+    // The guard lives with the file access, so a caller that forgets to
+    // validate still cannot escape the cache directory.
+    expect(await readCached('images', '../../../etc/passwd')).toBeNull();
   });
 });
