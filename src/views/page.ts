@@ -52,6 +52,7 @@ export function renderPage(): string {
   .icon-btn {
     display: inline-grid; place-items: center; width: 2.2rem; height: 2.2rem;
     padding: 0; border-radius: 8px; line-height: 0;
+    flex: none; /* as a flex child it would otherwise shrink sub-pixel */
   }
   .icon-btn svg { width: 1.15rem; height: 1.15rem; fill: none; stroke: currentColor;
     stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
@@ -106,7 +107,15 @@ export function renderPage(): string {
      picture and nothing else. Cursor keys still navigate. */
   #stage:fullscreen { background: #000; }
   #stage:fullscreen .nav { display: none; }
-  #stage:fullscreen img { max-width: 100vw; max-height: 100vh; }
+  #stage:fullscreen img { max-width: 100vw; max-height: 100vh; cursor: default; }
+  /* The close control must live inside the stage: nothing outside the
+     fullscreen element renders. Same .icon-btn dimensions as the bar's X, and
+     positioned to match it — top right. */
+  .fs-close { display: none; position: absolute; top: .7rem; right: .7rem; z-index: 2;
+    background: rgba(0,0,0,.55); color: #fff; border-color: transparent; }
+  .fs-close:hover { background: rgba(0,0,0,.75); border-color: transparent; }
+  #stage:fullscreen .fs-close { display: inline-grid; }
+  .stage img { cursor: zoom-in; }
 </style>
 </head>
 <body>
@@ -143,8 +152,11 @@ export function renderPage(): string {
     </div>
     <div class="stage" id="stage">
       <button class="nav prev" id="prev" aria-label="Previous image">&#8249;</button>
-      <img id="full" alt="">
+      <img id="full" alt="" title="Click for fullscreen">
       <button class="nav next" id="next" aria-label="Next image">&#8250;</button>
+      <button id="fsclose" class="icon-btn fs-close" title="Exit fullscreen (Esc)" aria-label="Exit fullscreen">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
     </div>
     <div class="meta" id="meta"></div>
   </div>
@@ -251,9 +263,28 @@ export function renderPage(): string {
     open(next);
   }
 
+  // A real click carries the user activation requestFullscreen() needs, so
+  // this works where a programmatic call would be rejected.
+  $('full').onclick = function () {
+    if (!document.fullscreenElement) enterFullscreen();
+  };
+  $('fsclose').onclick = function () {
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(function (e) { console.error('exitFullscreen', e); });
+    }
+  };
+
   $('prev').onclick = function () { step(-1); };
   $('next').onclick = function () { step(1); };
   $('close').onclick = function () { $('modal').close(); };
+  function enterFullscreen() {
+    var el = $('stage');
+    var req = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (!req) return;
+    var r = req.call(el);
+    if (r && r.catch) r.catch(function (e) { console.error('requestFullscreen failed', e); });
+  }
+
   $('fs').onclick = function () {
     // Fullscreen the STAGE, not the <dialog> and not documentElement.
     //  - the dialog itself: showModal() already put it in the top layer and
@@ -265,12 +296,7 @@ export function renderPage(): string {
     if (document.fullscreenElement) {
       document.exitFullscreen().catch(function (e) { console.error('exitFullscreen', e); });
     } else {
-      var el = $('stage');
-      var req = el.requestFullscreen || el.webkitRequestFullscreen;
-      if (req) {
-        var r = req.call(el);
-        if (r && r.catch) r.catch(function (e) { console.error('requestFullscreen failed', e); });
-      }
+      enterFullscreen();
     }
   };
 
