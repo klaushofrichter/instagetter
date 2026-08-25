@@ -149,11 +149,10 @@ export function renderPage(): string {
     z-index: 1;
   }
   .nav.prev { left: .75rem; } .nav.next { right: .75rem; }
-  .meta { padding: .8rem 1rem; border-top: 1px solid var(--line); max-height: 34vh; overflow: auto; }
-  .meta .caption { margin: 0 0 .5rem; }
-  .meta dl { display: grid; grid-template-columns: auto 1fr; gap: .15rem .75rem; margin: 0; font-size: .85rem; }
-  .meta dt { color: var(--muted); }
-  .meta dd { margin: 0; }
+  .meta { padding: .8rem 1rem; border-top: 1px solid var(--line); max-height: 34vh; overflow: auto; text-align: center; }
+  .meta .caption { margin: 0 0 .4rem; }
+  .meta .facts { margin: 0 0 .35rem; font-size: .85rem; color: var(--muted); }
+  .meta .links { margin: 0; font-size: .85rem; }
   /* Fullscreen targets the stage, so only the image subtree renders — no bar,
      no metadata, no counter. Hide the nav arrows too: the request is the
      picture and nothing else. Cursor keys still navigate. */
@@ -397,17 +396,24 @@ export function renderPage(): string {
     $('full').alt = m.caption || 'Instagram image';
     $('dl').href = '/download/' + encodeURIComponent(m.id) + '.jpg';
     $('counter').textContent = (i + 1) + ' of ' + images.length;
-    var rows = '';
-    rows += '<dt>Taken</dt><dd>' + esc(fmtDate(m.takenAt)) + '</dd>';
-    if (m.location) rows += '<dt>Location</dt><dd>' + esc(m.location) + '</dd>';
-    if (m.imgCount > 1) rows += '<dt>Carousel</dt><dd>image ' + m.imgIndex + ' of ' + m.imgCount + '</dd>';
-    rows += '<dt>Size</dt><dd>' + m.width + ' &times; ' + m.height + '</dd>';
-    rows += '<dt>Post</dt><dd><a href="' + esc(m.postUrl) + '" target="_blank" rel="noopener noreferrer">open on Instagram</a></dd>';
+    // Three centred lines: the caption, the facts, the links. The field labels
+    // are dropped — the values and the anchor text say what they are.
+    var facts = [esc(fmtDate(m.takenAt))];
+    if (m.location) facts.push(esc(m.location));
+    if (m.imgCount > 1) facts.push('image ' + m.imgIndex + ' of ' + m.imgCount);
+    facts.push(m.width + ' &times; ' + m.height);
+
     // Keyed on the Instagram shortcode, so it survives newer uploads shifting
     // every position — unlike ?image=<number>.
     var permalink = window.location.origin + '/?image=' + encodeURIComponent(m.shortcode);
-    rows += '<dt>Permalink</dt><dd><a href="' + esc(permalink) + '">instagetter permalink</a></dd>';
-    $('meta').innerHTML = '<p class="caption">' + (m.caption ? esc(m.caption) : '<em>no caption</em>') + '</p><dl>' + rows + '</dl>';
+    var links =
+      '<a href="' + esc(m.postUrl) + '" target="_blank" rel="noopener noreferrer">open on Instagram</a>' +
+      ' &mdash; <a href="' + esc(permalink) + '">instagetter permalink</a>';
+
+    $('meta').innerHTML =
+      '<p class="caption">' + (m.caption ? esc(m.caption) : '<em>no caption</em>') + '</p>' +
+      '<p class="facts">' + facts.join(' &mdash; ') + '</p>' +
+      '<p class="links">' + links + '</p>';
     renderFsMeta(m);
     if (!$('modal').open) $('modal').showModal();
   }
