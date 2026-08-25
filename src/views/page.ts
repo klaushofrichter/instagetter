@@ -121,7 +121,15 @@ export function renderPage(): string {
      picture and nothing else. Cursor keys still navigate. */
   #stage:fullscreen { background: #000; }
   #stage:fullscreen .nav { display: none; }
-  #stage:fullscreen img { max-width: 100vw; max-height: 100vh; cursor: default; }
+  /* Fill the screen in fullscreen, scaling small images UP as well as large
+     ones down. max-width/max-height only cap, they never enlarge — so set
+     explicit dimensions and let object-fit:contain preserve the aspect ratio
+     and letterbox whatever is left over. */
+  #stage:fullscreen img {
+    width: 100vw; height: 100vh;
+    max-width: none; max-height: none;
+    object-fit: contain; cursor: default;
+  }
   /* The close control must live inside the stage: nothing outside the
      fullscreen element renders. Same .icon-btn dimensions as the bar's X, and
      positioned to match it — top right. */
