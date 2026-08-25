@@ -183,6 +183,9 @@ export function renderPage(): string {
     .fs-close svg { width: 1.4rem; height: 1.4rem; }
   }
   .stage img { cursor: zoom-in; }
+  /* The gesture is ours: without this the browser claims the drag for panning
+     and the swipe never reaches the handlers. */
+  .stage { touch-action: none; }
   /* Fullscreen metadata overlay, toggled with the space bar. Only ever shown
      inside :fullscreen, so it cannot intrude on the normal detail view. */
   .fs-meta { display: none; }
@@ -439,7 +442,34 @@ export function renderPage(): string {
   var ZONE_BOTTOM = 0.78; // below this toggles the metadata panel
   var ZONE_TOP = 0.12;    // top strip always returns to the detail view
 
+  // Swipes: left or up advance, right or down go back, in the detail view and
+  // fullscreen alike. Bound to the stage so it covers the whole picture area.
+  var SWIPE_MIN = 40;      // px of travel before a drag counts as a swipe
+  var touchStart = null;
+  var swiped = false;
+
+  $('stage').addEventListener('touchstart', function (e) {
+    if (e.touches.length !== 1) { touchStart = null; return; }
+    touchStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    swiped = false;
+  }, { passive: true });
+
+  $('stage').addEventListener('touchend', function (e) {
+    if (!touchStart) return;
+    var t = e.changedTouches[0];
+    var dx = t.clientX - touchStart.x;
+    var dy = t.clientY - touchStart.y;
+    touchStart = null;
+    // Below the threshold this was a tap: leave it to the click handler.
+    if (Math.abs(dx) < SWIPE_MIN && Math.abs(dy) < SWIPE_MIN) return;
+    swiped = true;
+    if (Math.abs(dx) >= Math.abs(dy)) step(dx < 0 ? 1 : -1);
+    else step(dy < 0 ? 1 : -1);
+  }, { passive: true });
+
   $('full').onclick = function (e) {
+    // A swipe also emits a click; do not let it trigger a tap zone as well.
+    if (swiped) { swiped = false; return; }
     if (!inFullscreen()) { enterFullscreen(); return; }
     var w = window.innerWidth, h = window.innerHeight;
     // The top strip wins over the side zones. The X lives in the top right,

@@ -121,3 +121,24 @@ post's own images — and the standing constraint that Instagram's private API i
 off-limits by the user's decision.
 
 Scope is deliberately small: newest posts only, never a bulk scrape.
+
+### Carousels: always use ?img_index=N
+
+Fetch each carousel slide by URL — `https://www.instagram.com/p/<code>/?img_index=<n>`
+— rather than clicking the Next control.
+
+This is not merely tidier, it is the difference between working and not. Some
+carousels render a **blank grey image frame** in the automation context: the
+caption, location, likes and the slide dots all appear, but no image ever
+loads, on a fresh tab, across repeated attempts, with no console error. The
+same post shows its images normally in the user's own browser window. Two posts
+were written off as unextractable on that basis. Adding `?img_index=N` loads
+every slide instantly — `waitedMs: 0` on all six slides of a post that had
+never rendered one.
+
+It is also faster and steadier than clicking through: no click, no wait for the
+slide transition, and no burst of decodes to stall the renderer.
+
+Slide count comes from the dots in the DOM; `?img_index=N` beyond the end
+simply shows the last slide, so stop when the image bytes repeat.
+
