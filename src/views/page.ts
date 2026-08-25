@@ -16,7 +16,7 @@ export function renderPage(): string {
     --bg: #ffffff; --fg: #14161a; --muted: #6b7280; --line: #e5e7eb;
     --card: #fafafa; --accent: #c13584; --overlay: rgba(255,255,255,.96);
     --btn: #f3f4f6; --btn-fg: #14161a;
-    --fsmeta-bg: rgba(240,240,243,.86); --fsmeta-fg: #14161a; --fsmeta-muted: #4b5563;
+    --fsmeta-bg: rgba(240,240,243,.68); --fsmeta-fg: #14161a; --fsmeta-muted: #4b5563;
     color-scheme: light;
   }
   @media (prefers-color-scheme: dark) {
@@ -24,7 +24,7 @@ export function renderPage(): string {
       --bg: #0f1115; --fg: #eef1f5; --muted: #9aa3af; --line: #262b33;
       --card: #171a20; --overlay: rgba(10,12,15,.97);
       --btn: #232830; --btn-fg: #eef1f5;
-      --fsmeta-bg: rgba(12,14,18,.78); --fsmeta-fg: #f3f5f8; --fsmeta-muted: #b6bec9;
+      --fsmeta-bg: rgba(12,14,18,.62); --fsmeta-fg: #f3f5f8; --fsmeta-muted: #b6bec9;
       color-scheme: dark;
     }
   }
@@ -32,7 +32,7 @@ export function renderPage(): string {
     --bg: #0f1115; --fg: #eef1f5; --muted: #9aa3af; --line: #262b33;
     --card: #171a20; --overlay: rgba(10,12,15,.97);
     --btn: #232830; --btn-fg: #eef1f5;
-    --fsmeta-bg: rgba(12,14,18,.78); --fsmeta-fg: #f3f5f8; --fsmeta-muted: #b6bec9;
+    --fsmeta-bg: rgba(12,14,18,.62); --fsmeta-fg: #f3f5f8; --fsmeta-muted: #b6bec9;
     color-scheme: dark;
   }
   :root[data-theme="light"] { color-scheme: light; }
@@ -163,7 +163,7 @@ export function renderPage(): string {
   #stage:fullscreen .fs-meta.on {
     display: flex; flex-direction: column; justify-content: center; align-items: center;
     position: absolute; left: 0; right: 0; bottom: 0;
-    min-height: 20vh; padding: 1rem 2rem;
+    min-height: 16vh; padding: .85rem 2rem;
     background: var(--fsmeta-bg); color: var(--fsmeta-fg);
     backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
     text-align: center; z-index: 3;
@@ -376,7 +376,16 @@ export function renderPage(): string {
     $('fsmeta').classList.toggle('on');
   }
 
+  // At most three steps per second. Guards the arrows, the cursor keys and the
+  // tap zones alike, since they all route through here — and keeps a held key
+  // from queueing a burst of full-resolution decodes.
+  var STEP_MIN_MS = 334;
+  var lastStepAt = 0;
+
   function step(delta) {
+    var now = Date.now();
+    if (now - lastStepAt < STEP_MIN_MS) return;
+    lastStepAt = now;
     var next = current + delta;
     if (next < 0) next = images.length - 1;
     if (next >= images.length) next = 0;
