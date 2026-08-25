@@ -80,7 +80,7 @@ export function renderPage(): string {
   dialog#about {
     border: 1px solid var(--line); border-radius: 14px; padding: 0;
     background: var(--bg); color: var(--fg);
-    max-width: min(30rem, calc(100vw - 2rem));
+    max-width: min(37.5rem, calc(100vw - 2rem));
   }
   dialog#about::backdrop { background: rgba(0,0,0,.45); }
   .about-inner { padding: 1.1rem 1.3rem 1.3rem; }
@@ -139,14 +139,14 @@ export function renderPage(): string {
     <a href="${PROFILE_URL}" target="_blank" rel="noopener noreferrer">@klaushofrichter</a>
     <span class="spacer"></span>
     <span class="status" id="status"></span>
-    <button id="about-open" class="icon-btn" title="About" aria-label="About this site">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 16v-5"/><path d="M12 8h.01"/></svg>
-    </button>
     <button id="theme" class="icon-btn" title="Toggle light / dark" aria-label="Toggle light or dark theme">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
     </button>
     <button id="refresh" class="icon-btn" title="Check S3 for new images" aria-label="Refresh">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg>
+    </button>
+    <button id="about-open" class="icon-btn" title="About" aria-label="About this site">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 16v-5"/><path d="M12 8h.01"/></svg>
     </button>
   </header>
   <div id="content"></div>
@@ -158,7 +158,7 @@ export function renderPage(): string {
       <a href="${SKYLAR_URL}" target="_blank" rel="noopener noreferrer" title="www.skylar.technology">
         <img class="about-logo" src="/favicon.png" alt="www.skylar.technology">
       </a>
-      <h2>instagetter</h2>
+      <h2><a class="title-link" href="${REPO_URL}" target="_blank" rel="noopener noreferrer" title="Source on GitHub">instagetter</a></h2>
       <span class="spacer"></span>
       <button id="about-close" class="icon-btn" title="Close (Esc)" aria-label="Close">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
