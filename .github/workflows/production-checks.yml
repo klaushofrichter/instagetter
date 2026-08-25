@@ -45,6 +45,16 @@ jobs:
           for f in sarif-results/*.sarif; do
             count=$(jq '[.runs[].results[]] | length' "$f")
             total=$((total + count))
+            # Print each finding: without this the job reports only a count,
+            # and the SARIF is never uploaded (no Advanced Security on this
+            # private repo), leaving nothing to act on.
+            jq -r '
+              .runs[] as $run
+              | $run.results[]?
+              | . as $r
+              | ($r.locations[0].physicalLocation // {}) as $loc
+              | "::error file=\($loc.artifactLocation.uri // "?"),line=\($loc.region.startLine // 0)::[\($r.ruleId // "?")] \($r.message.text // "")"
+            ' "$f"
           done
           echo "CodeQL findings: $total"
           if [ "$total" -gt 0 ]; then
