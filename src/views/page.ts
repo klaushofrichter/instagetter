@@ -15,20 +15,23 @@ export function renderPage(): string {
     --bg: #ffffff; --fg: #14161a; --muted: #6b7280; --line: #e5e7eb;
     --card: #fafafa; --accent: #c13584; --overlay: rgba(255,255,255,.96);
     --btn: #f3f4f6; --btn-fg: #14161a;
+    color-scheme: light;
   }
-  :root:not([data-theme="light"]) { color-scheme: light dark; }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       --bg: #0f1115; --fg: #eef1f5; --muted: #9aa3af; --line: #262b33;
       --card: #171a20; --overlay: rgba(10,12,15,.97);
       --btn: #232830; --btn-fg: #eef1f5;
+      color-scheme: dark;
     }
   }
   :root[data-theme="dark"] {
     --bg: #0f1115; --fg: #eef1f5; --muted: #9aa3af; --line: #262b33;
     --card: #171a20; --overlay: rgba(10,12,15,.97);
     --btn: #232830; --btn-fg: #eef1f5;
+    color-scheme: dark;
   }
+  :root[data-theme="light"] { color-scheme: light; }
   * { box-sizing: border-box; }
   body {
     margin: 0; background: var(--bg); color: var(--fg);
@@ -37,7 +40,7 @@ export function renderPage(): string {
   .wrap { max-width: 62rem; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
   header { display: flex; flex-wrap: wrap; gap: .75rem 1rem; align-items: center; margin-bottom: 1.25rem; }
   h1 { font-size: 1.4rem; margin: 0; letter-spacing: -.02em; }
-  h1 .dot { display: inline-block; width: .5rem; height: .5rem; border-radius: 50%; background: var(--accent); margin-right: .5rem; vertical-align: middle; }
+  h1 .mark { width: 1em; height: 1em; border-radius: 4px; margin-right: .5rem; vertical-align: -.12em; }
   .spacer { flex: 1 1 auto; }
   a { color: var(--accent); }
   button {
@@ -98,13 +101,18 @@ export function renderPage(): string {
   .meta dl { display: grid; grid-template-columns: auto 1fr; gap: .15rem .75rem; margin: 0; font-size: .85rem; }
   .meta dt { color: var(--muted); }
   .meta dd { margin: 0; }
-  :fullscreen .modal-inner { height: 100vh; }
+  /* Fullscreen targets the stage, so only the image subtree renders — no bar,
+     no metadata, no counter. Hide the nav arrows too: the request is the
+     picture and nothing else. Cursor keys still navigate. */
+  #stage:fullscreen { background: #000; }
+  #stage:fullscreen .nav { display: none; }
+  #stage:fullscreen img { max-width: 100vw; max-height: 100vh; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
-    <h1><span class="dot"></span><a class="title-link" href="${REPO_URL}" target="_blank" rel="noopener noreferrer" title="Source on GitHub">instagetter</a></h1>
+    <h1><img class="mark" src="/favicon.png" alt=""><a class="title-link" href="${REPO_URL}" target="_blank" rel="noopener noreferrer" title="Source on GitHub">instagetter</a></h1>
     <a href="${PROFILE_URL}" target="_blank" rel="noopener noreferrer">@klaushofrichter</a>
     <span class="spacer"></span>
     <span class="status" id="status"></span>
@@ -123,13 +131,17 @@ export function renderPage(): string {
     <div class="modal-bar">
       <span id="counter" class="status"></span>
       <span class="spacer"></span>
-      <button id="fs">Fullscreen</button>
-      <a id="dl"><button>Download</button></a>
+      <button id="fs" class="icon-btn" title="Fullscreen (f)" aria-label="Enter fullscreen">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+      </button>
+      <a id="dl" download><button class="icon-btn" title="Download" aria-label="Download">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m7 12 5 5 5-5"/><path d="M5 21h14"/></svg>
+      </button></a>
       <button id="close" class="icon-btn" title="Close (Esc)" aria-label="Close">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
       </button>
     </div>
-    <div class="stage">
+    <div class="stage" id="stage">
       <button class="nav prev" id="prev" aria-label="Previous image">&#8249;</button>
       <img id="full" alt="">
       <button class="nav next" id="next" aria-label="Next image">&#8250;</button>
@@ -158,7 +170,13 @@ export function renderPage(): string {
     if (saved) document.documentElement.setAttribute('data-theme', saved);
   } catch (e) { /* private mode */ }
   $('theme').onclick = function () {
-    var isDark = getComputedStyle(document.body).backgroundColor === 'rgb(15, 17, 21)';
+    // Read the chosen theme, falling back to the OS preference. Do not sniff
+    // the computed background colour — that silently breaks if the palette
+    // changes.
+    var explicit = document.documentElement.getAttribute('data-theme');
+    var isDark = explicit
+      ? explicit === 'dark'
+      : window.matchMedia('(prefers-color-scheme: dark)').matches;
     var next = isDark ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', next);
     try { localStorage.setItem('theme', next); } catch (e) {}
@@ -237,15 +255,17 @@ export function renderPage(): string {
   $('next').onclick = function () { step(1); };
   $('close').onclick = function () { $('modal').close(); };
   $('fs').onclick = function () {
-    // Fullscreen the document element, NOT the <dialog>: a dialog opened with
-    // showModal() is already in the top layer, and requestFullscreen() on it
-    // rejects in Chrome — silently, since the promise was never handled. The
-    // modal still paints above a fullscreen <html>, and because the keydown
-    // handler is bound to document, the cursor keys keep working in fullscreen.
+    // Fullscreen the STAGE, not the <dialog> and not documentElement.
+    //  - the dialog itself: showModal() already put it in the top layer and
+    //    Chrome rejects requestFullscreen() on it.
+    //  - documentElement: the whole page enters the top layer *after* the
+    //    dialog, so the grid paints on top of the modal.
+    // A descendant of the open dialog enters the top layer above it and
+    // renders only its own subtree, which is exactly the image.
     if (document.fullscreenElement) {
       document.exitFullscreen().catch(function (e) { console.error('exitFullscreen', e); });
     } else {
-      var el = document.documentElement;
+      var el = $('stage');
       var req = el.requestFullscreen || el.webkitRequestFullscreen;
       if (req) {
         var r = req.call(el);
@@ -254,8 +274,15 @@ export function renderPage(): string {
     }
   };
 
+  var ICON_EXPAND = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>';
+  var ICON_COMPRESS = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8h3a2 2 0 0 0 2-2V3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/></svg>';
+
+  // Swap the icon rather than textContent, which would wipe out the SVG.
   document.addEventListener('fullscreenchange', function () {
-    $('fs').textContent = document.fullscreenElement ? 'Exit fullscreen' : 'Fullscreen';
+    var on = !!document.fullscreenElement;
+    $('fs').innerHTML = on ? ICON_COMPRESS : ICON_EXPAND;
+    $('fs').setAttribute('aria-label', on ? 'Exit fullscreen' : 'Enter fullscreen');
+    $('fs').setAttribute('title', on ? 'Exit fullscreen (Esc)' : 'Fullscreen (f)');
   });
   $('modal').addEventListener('close', function () { render(); });
 
