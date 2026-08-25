@@ -113,6 +113,11 @@ export function renderPage(): string {
   #about p { margin: 0 0 .7rem; }
   .about-links { color: var(--muted); font-size: .87rem; margin-bottom: 0 !important; }
   .about-updated { color: var(--muted); font-size: .87rem; }
+  .about-nav { color: var(--muted); font-size: .87rem; }
+  .about-nav kbd {
+    font: inherit; background: var(--card); border: 1px solid var(--line);
+    border-radius: 4px; padding: 0 .3rem;
+  }
 
   dialog#modal {
     border: none; padding: 0; background: transparent; max-width: 100vw; max-height: 100vh;
@@ -261,6 +266,9 @@ export function renderPage(): string {
     <p>It extracts the newest posts from a single Instagram account, stores them
       in S3 at full resolution with their metadata, and serves them as a
       responsive grid with a lightbox. The site itself never talks to Instagram.</p>
+    <p class="about-nav">Navigate with swipes, taps or the cursor keys. Click a
+      picture for fullscreen, and press <kbd>space</kbd> there to show its
+      details.</p>
     <p class="about-updated" id="about-updated"></p>
     <p class="about-links">
       <a href="${PROFILE_URL}" target="_blank" rel="noopener noreferrer">@klaushofrichter</a>
@@ -388,8 +396,8 @@ export function renderPage(): string {
     for (var t = 0; t < tiles.length; t++) {
       tiles[t].onclick = function () { open(Number(this.getAttribute('data-idx'))); };
     }
-    if ($('pprev')) $('pprev').onclick = function () { page--; render(); window.scrollTo(0, 0); };
-    if ($('pnext')) $('pnext').onclick = function () { page++; render(); window.scrollTo(0, 0); };
+    if ($('pprev')) $('pprev').onclick = function () { changePage(-1); };
+    if ($('pnext')) $('pnext').onclick = function () { changePage(1); };
     syncUrl();
   }
 
@@ -444,12 +452,29 @@ export function renderPage(): string {
   // tap zones alike, since they all route through here — and keeps a held key
   // from queueing a burst of full-resolution decodes.
   var STEP_MIN_MS = 334;
-  var lastStepAt = 0;
+  var lastNavAt = 0;
+
+  // One gate for every kind of navigation — arrows, swipes, tap zones and the
+  // pager alike — so no input route can outrun the others.
+  function navAllowed() {
+    var now = Date.now();
+    if (now - lastNavAt < STEP_MIN_MS) return false;
+    lastNavAt = now;
+    return true;
+  }
+
+  function changePage(delta) {
+    if (!navAllowed()) return;
+    var pages = Math.ceil(images.length / PER_PAGE);
+    var next = page + delta;
+    if (next < 0 || next > pages - 1) return;
+    page = next;
+    render();
+    window.scrollTo(0, 0);
+  }
 
   function step(delta) {
-    var now = Date.now();
-    if (now - lastStepAt < STEP_MIN_MS) return;
-    lastStepAt = now;
+    if (!navAllowed()) return;
     var next = current + delta;
     if (next < 0) next = images.length - 1;
     if (next >= images.length) next = 0;
@@ -608,9 +633,18 @@ export function renderPage(): string {
   $('modal').addEventListener('close', syncGridToCurrent);
 
   document.addEventListener('keydown', function (e) {
-    if (!$('modal').open) return;
-    if (e.key === 'ArrowLeft') { e.preventDefault(); step(-1); }
-    else if (e.key === 'ArrowRight') { e.preventDefault(); step(1); }
+    if (!$('modal').open) {
+      // On the grid, left and right page through. Up and down are left alone
+      // so the page can still be scrolled — a grid is taller than the viewport.
+      if (e.key === 'ArrowLeft') { e.preventDefault(); changePage(-1); }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); changePage(1); }
+      return;
+    }
+    // Up joins left as "previous" and down joins right as "next", matching the
+    // arrow cluster. Note this is deliberately the opposite of swipe-up, which
+    // moves the picture up to reveal the next one.
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); step(-1); }
+    else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); step(1); }
     else if (e.key === 'f' || e.key === 'F') { $('fs').click(); }
     else if (e.key === ' ' || e.code === 'Space') {
       // Only in fullscreen, and preventDefault so the page does not scroll.

@@ -149,10 +149,15 @@ middle of a black field.
 |---|---|
 | click the image | enter fullscreen |
 | `f` | toggle fullscreen |
-| `←` `→` | previous / next image, in fullscreen too |
+| `←` `↑` | previous image |
+| `→` `↓` | next image |
 | `space` | show or hide the metadata overlay (fullscreen only) |
 | `Esc` | leave fullscreen, then close the detail view |
 | the `X`, top right | leave fullscreen, or close the detail view |
+
+Arrow keys work the same in the detail view and in fullscreen. On the grid,
+`←` and `→` page instead; `↑` and `↓` are left alone there so the page can
+still be scrolled.
 
 The space-bar overlay is a translucent panel across the bottom of the screen
 with the caption and facts centred, tinted to match the active theme.
@@ -174,6 +179,23 @@ needs no visible controls beyond the `X`:
 The top strip takes precedence over the side zones, so a near miss on the `X`
 closes fullscreen rather than skipping to the next image. The `X` itself is
 enlarged on touch devices.
+
+Swipes work in the detail view and fullscreen alike:
+
+| Swipe | Effect |
+|---|---|
+| left, or up | next image |
+| right, or down | previous image |
+
+A drag shorter than 40px counts as a tap, so the tap zones still work. Note the
+arrow keys are deliberately the other way round from the swipes: `↑` means
+"previous", while swiping up pushes the current picture away to reveal the next
+one — the finger moves the content, the key moves the selection.
+
+Every route into navigation — arrow keys, swipes, tap zones, the on-image
+arrows and the pager — shares one rate limit of three steps per second. Holding
+a key or flicking repeatedly will not queue up a burst of full-resolution
+decodes.
 
 ### Linking to a page or image
 
