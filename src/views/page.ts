@@ -1,5 +1,6 @@
 const PROFILE_URL = 'https://www.instagram.com/klaushofrichter';
 const REPO_URL = 'https://github.com/klaushofrichter/instagetter';
+const SKYLAR_URL = 'https://www.skylar.technology';
 
 export function renderPage(): string {
   return `<!doctype html>
@@ -76,6 +77,19 @@ export function renderPage(): string {
   .pager { display: flex; align-items: center; justify-content: center; gap: 1rem; margin-top: 1.25rem; color: var(--muted); }
   .empty { border: 1px dashed var(--line); border-radius: 12px; padding: 2.5rem 1rem; text-align: center; color: var(--muted); }
 
+  dialog#about {
+    border: 1px solid var(--line); border-radius: 14px; padding: 0;
+    background: var(--bg); color: var(--fg);
+    max-width: min(30rem, calc(100vw - 2rem));
+  }
+  dialog#about::backdrop { background: rgba(0,0,0,.45); }
+  .about-inner { padding: 1.1rem 1.3rem 1.3rem; }
+  .about-head { display: flex; align-items: center; gap: .6rem; margin-bottom: .6rem; }
+  .about-head h2 { font-size: 1.15rem; margin: 0; letter-spacing: -.01em; }
+  .about-logo { width: 1.9rem; height: 1.9rem; border-radius: 6px; display: block; }
+  #about p { margin: 0 0 .7rem; }
+  .about-links { color: var(--muted); font-size: .87rem; margin-bottom: 0 !important; }
+
   dialog#modal {
     border: none; padding: 0; background: transparent; max-width: 100vw; max-height: 100vh;
     width: 100%; height: 100%; margin: 0; color: var(--fg);
@@ -121,10 +135,13 @@ export function renderPage(): string {
 <body>
 <div class="wrap">
   <header>
-    <h1><img class="mark" src="/favicon.png" alt=""><a class="title-link" href="${REPO_URL}" target="_blank" rel="noopener noreferrer" title="Source on GitHub">instagetter</a></h1>
+    <h1><a href="${SKYLAR_URL}" target="_blank" rel="noopener noreferrer" title="www.skylar.technology"><img class="mark" src="/favicon.png" alt="www.skylar.technology"></a><a class="title-link" href="${REPO_URL}" target="_blank" rel="noopener noreferrer" title="Source on GitHub">instagetter</a></h1>
     <a href="${PROFILE_URL}" target="_blank" rel="noopener noreferrer">@klaushofrichter</a>
     <span class="spacer"></span>
     <span class="status" id="status"></span>
+    <button id="about-open" class="icon-btn" title="About" aria-label="About this site">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 16v-5"/><path d="M12 8h.01"/></svg>
+    </button>
     <button id="theme" class="icon-btn" title="Toggle light / dark" aria-label="Toggle light or dark theme">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
     </button>
@@ -134,6 +151,31 @@ export function renderPage(): string {
   </header>
   <div id="content"></div>
 </div>
+
+<dialog id="about">
+  <div class="about-inner">
+    <div class="about-head">
+      <a href="${SKYLAR_URL}" target="_blank" rel="noopener noreferrer" title="www.skylar.technology">
+        <img class="about-logo" src="/favicon.png" alt="www.skylar.technology">
+      </a>
+      <h2>instagetter</h2>
+      <span class="spacer"></span>
+      <button id="about-close" class="icon-btn" title="Close (Esc)" aria-label="Close">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
+    </div>
+    <p>A small self-hosted gallery for my own Instagram photos.</p>
+    <p>It extracts the newest posts from a single Instagram account, stores them
+      in S3 at full resolution with their metadata, and serves them as a
+      responsive grid with a lightbox. The site itself never talks to Instagram.</p>
+    <p class="about-links">
+      <a href="${PROFILE_URL}" target="_blank" rel="noopener noreferrer">@klaushofrichter</a>
+      &middot; <a href="${REPO_URL}" target="_blank" rel="noopener noreferrer">source on GitHub</a>
+      &middot; <a href="${SKYLAR_URL}" target="_blank" rel="noopener noreferrer">www.skylar.technology</a>
+      &middot; MIT licensed
+    </p>
+  </div>
+</dialog>
 
 <dialog id="modal">
   <div class="modal-inner">
@@ -277,6 +319,13 @@ export function renderPage(): string {
   $('prev').onclick = function () { step(-1); };
   $('next').onclick = function () { step(1); };
   $('close').onclick = function () { $('modal').close(); };
+  $('about-open').onclick = function () { $('about').showModal(); };
+  $('about-close').onclick = function () { $('about').close(); };
+  // Click the backdrop to dismiss.
+  $('about').addEventListener('click', function (e) {
+    if (e.target === $('about')) $('about').close();
+  });
+
   function enterFullscreen() {
     var el = $('stage');
     var req = el.requestFullscreen || el.webkitRequestFullscreen;
