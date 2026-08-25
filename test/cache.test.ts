@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { promises as fs } from 'fs';
 import path from 'path';
-import { refresh, getItems, resetCache, readCached, isValidId } from '../src/cache';
+import { refresh, getItems, resetCache, readCached, isValidId, getProgress } from '../src/cache';
 import { setClient } from '../src/s3';
 import { installFakeS3, meta } from './fakeS3';
 
@@ -123,5 +123,51 @@ describe('slot id validation', () => {
     // The guard lives with the file access, so a caller that forgets to
     // validate still cannot escape the cache directory.
     expect(await readCached('images', '../../../etc/passwd')).toBeNull();
+  });
+});
+
+describe('refresh progress', () => {
+  it('starts idle', () => {
+    expect(getProgress()).toEqual({ loading: false, done: 0, total: 0 });
+  });
+
+  it('reports loading with a total while a refresh is in flight, then clears', async () => {
+    const index = [
+      meta('p1_1', '2026-03-01T00:00:00.000Z'),
+      meta('p2_1', '2026-02-01T00:00:00.000Z'),
+    ];
+    setClient({
+      send: async (cmd: { input: { Key: string } }) => {
+        const payload =
+          cmd.input.Key === 'index.json' ? Buffer.from(JSON.stringify(index)) : Buffer.from([0xff]);
+        await new Promise((r) => setTimeout(r, 30));
+        return { Body: { transformToByteArray: async () => new Uint8Array(payload) } };
+      },
+    } as never);
+
+    const inFlight = refresh();
+    // Let the index resolve so `total` is known, then look mid-download.
+    await new Promise((r) => setTimeout(r, 45));
+    const during = getProgress();
+
+    await inFlight;
+    const after = getProgress();
+
+    expect(during.loading).toBe(true);
+    expect(during.total).toBe(2);
+    expect(after.loading).toBe(false);
+    expect(after.done).toBe(2);
+  });
+
+  it('clears the loading flag even when the refresh fails', async () => {
+    setClient({
+      send: async () => {
+        throw new Error('S3 unavailable');
+      },
+    } as never);
+
+    await expect(refresh()).rejects.toThrow('S3 unavailable');
+
+    expect(getProgress().loading).toBe(false);
   });
 });

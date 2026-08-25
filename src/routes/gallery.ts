@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { getItems, getLastRefresh, readCached, refresh, maxCached, isValidId } from '../cache';
+import { getItems, getLastRefresh, readCached, refresh, maxCached, isValidId, getProgress } from '../cache';
 import { refreshRateLimit } from '../middleware/refreshRateLimit';
 import { createBrowseRateLimit } from '../middleware/browseRateLimit';
 
@@ -12,6 +12,7 @@ galleryRouter.get('/api/images', browseLimit, (_req: Request, res: Response) => 
     images: getItems(),
     lastRefresh: getLastRefresh(),
     limit: maxCached(),
+    progress: getProgress(),
   });
 });
 
