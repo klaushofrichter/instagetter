@@ -35,8 +35,13 @@ jobs:
 
       - uses: github/codeql-action/analyze@v4
         with:
+          # Upload to code scanning (free for public repos) so findings land in
+          # the Security tab with full location and dataflow detail. `output`
+          # also keeps a local copy so the gate below can still fail the job:
+          # alerts on their own do not fail a check, and this check is required
+          # for merging into production.
           output: sarif-results
-          upload: never
+          upload: always
 
       - name: Fail if CodeQL found any results
         run: |
@@ -45,9 +50,8 @@ jobs:
           for f in sarif-results/*.sarif; do
             count=$(jq '[.runs[].results[]] | length' "$f")
             total=$((total + count))
-            # Print each finding: without this the job reports only a count,
-            # and the SARIF is never uploaded (no Advanced Security on this
-            # private repo), leaving nothing to act on.
+            # Print each finding inline so a failure is actionable from the
+            # log alone, without opening the Security tab.
             jq -r '
               .runs[] as $run
               | $run.results[]?
@@ -58,6 +62,6 @@ jobs:
           done
           echo "CodeQL findings: $total"
           if [ "$total" -gt 0 ]; then
-            echo "::error::CodeQL found $total finding(s) — blocking merge"
+            echo "::error::CodeQL found $total finding(s) — blocking merge. Details: Security tab > Code scanning"
             exit 1
           fi
