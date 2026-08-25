@@ -156,6 +156,10 @@ middle of a black field.
 The space-bar overlay is a translucent panel across the bottom of the screen
 with the caption and facts centred, tinted to match the active theme.
 
+On iPhone there is no element Fullscreen API — Chrome and every other iOS
+browser run on WebKit, so they share Safari's limitation — and fullscreen falls
+back to a fixed, viewport-filling stage that behaves the same from the outside.
+
 On a touch screen the whole picture is divided into tap zones, so fullscreen
 needs no visible controls beyond the `X`:
 
