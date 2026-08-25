@@ -68,8 +68,14 @@ export function renderPage(): string {
   dialog#modal::backdrop { background: var(--overlay); }
   .modal-inner { display: flex; flex-direction: column; height: 100vh; background: var(--bg); }
   .modal-bar { display: flex; gap: .5rem; align-items: center; padding: .6rem .8rem; border-bottom: 1px solid var(--line); }
-  .stage { flex: 1 1 auto; position: relative; display: grid; place-items: center; overflow: hidden; background: var(--card); }
-  .stage img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+  /* min-height:0 is required: a flex child defaults to min-height:auto and so
+     refuses to shrink below the intrinsic image height, pushing the metadata
+     panel off-screen and cropping tall images. */
+  .stage { flex: 1 1 auto; min-height: 0; position: relative; display: grid; place-items: center; overflow: hidden; background: var(--card); }
+  /* Absolutely positioned so the percentage caps resolve against the stage's
+     padding box. As a grid/flex child the row is auto-sized, so max-height:100%
+     has no definite basis and is ignored — the image then overflows. */
+  .stage img { position: absolute; inset: 0; margin: auto; max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
   .nav {
     position: absolute; top: 50%; transform: translateY(-50%);
     width: 2.6rem; height: 2.6rem; border-radius: 50%; display: grid; place-items: center;

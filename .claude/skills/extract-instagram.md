@@ -35,6 +35,20 @@ scrape of the account or of anyone else's.
 - Resolution is the original upload size and varies per post (2572, 2750, 2004,
   1440 … all observed). There is no `srcset`, so there is no larger variant to
   request — take what the page loads.
+- **Grid tile hrefs are not prefixed `/p/`.** `a[href^="/p/"]` matches nothing.
+  Match `/\/p\/([A-Za-z0-9_-]+)/` anywhere in the href instead.
+- **A blob-anchor download fails silently when Chrome blocks it.** `a.click()`
+  does not throw, and the blob `fetch` still returns real bytes — so the page
+  will happily report success for a file that was never written. Chrome allows
+  the first automatic download from a site and blocks the rest until the user
+  permits them for that origin. **Always verify on disk afterwards** (step 5)
+  and treat the in-page byte count as a claim, not proof.
+- **`javascript_tool` calls time out at 45s.** Do not loop a whole carousel plus
+  hydration waits in one call — one slide per call for carousels.
+- **Hydration is not a fixed delay.** 2.8s was enough for some posts and not for
+  others; a post whose image had not loaded reported `imgCount: 0` with perfectly
+  good metadata. Poll for the image (`width > 400`) up to ~15s instead of
+  sleeping a fixed amount. Extraction is not time critical — prefer waiting.
 
 ## Steps
 
@@ -59,7 +73,10 @@ scrape of the account or of anyone else's.
        `download="<shortcode>_<NN>.jpg"` → click. Record `naturalWidth/Height`.
      - If more slides remain, click the `aria-label="Next"` control and wait
        ~800ms. Slides already mounted need no click; long carousels do.
-5. Move the downloaded files from `~/Downloads` into a staging directory and
+5. **Verify every expected file exists in `~/Downloads` with a non-zero size**
+   before staging. If files are missing, downloads are being blocked — stop and
+   tell the user rather than uploading a partial set. Then move them into a
+   staging directory and
    write `manifest.json` there — an array of the metadata objects, each with
    `id` (`<shortcode>_<NN>`), `shortcode`, `imgIndex`, `imgCount`, `caption`,
    `hashtags`, `location`, `takenAt`, `likes`, `comments`, `postUrl`,
@@ -70,6 +87,11 @@ scrape of the account or of anyone else's.
 7. Close the tab. Tell the user what was added, then hit **Refresh** on
    https://insta.skylar.technology (or `POST /api/refresh`) to pull it into the
    service cache.
+
+## Cadence
+
+Intended to run about once a day. It is not time critical, so favour generous
+waits and spacing between downloads over speed.
 
 ## Carousels
 
