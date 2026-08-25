@@ -79,6 +79,11 @@ export function renderPage(): string {
   }
   .pager { display: flex; align-items: center; justify-content: center; gap: 1rem; margin-top: 1.25rem; color: var(--muted); }
   .empty { border: 1px dashed var(--line); border-radius: 12px; padding: 2.5rem 1rem; text-align: center; color: var(--muted); }
+  .loading { border: 1px solid var(--line); border-radius: 12px; padding: 2.5rem 1rem; text-align: center; }
+  .loading .count { font-size: 1.4rem; font-weight: 600; color: var(--fg); margin: .5rem 0 .9rem; }
+  .bar { height: 6px; border-radius: 999px; background: var(--card); overflow: hidden;
+    max-width: 22rem; margin: 0 auto; border: 1px solid var(--line); }
+  .bar > span { display: block; height: 100%; background: var(--accent); transition: width .3s ease; }
 
   dialog#about {
     border: 1px solid var(--line); border-radius: 14px; padding: 0;
@@ -112,6 +117,11 @@ export function renderPage(): string {
     position: absolute; top: 50%; transform: translateY(-50%);
     width: 2.6rem; height: 2.6rem; border-radius: 50%; display: grid; place-items: center;
     background: rgba(0,0,0,.55); color: #fff; border: none; font-size: 1.2rem;
+    /* Both arrows sit above the image. Without this they share z-index:auto
+       with it and paint in DOM order — prev is before the <img> and so was
+       hidden beneath it, while next, being after, stayed visible. Only showed
+       on narrow screens, where the image fills the width. */
+    z-index: 1;
   }
   .nav.prev { left: .75rem; } .nav.next { right: .75rem; }
   .meta { padding: .8rem 1rem; border-top: 1px solid var(--line); max-height: 34vh; overflow: auto; }
@@ -241,6 +251,7 @@ export function renderPage(): string {
 (function () {
   var PER_PAGE = 9;
   var images = [];
+  var progress = { loading: false, done: 0, total: 0 };
   var page = 0;
   var current = -1;
 
@@ -277,6 +288,16 @@ export function renderPage(): string {
 
   function render() {
     var el = $('content');
+    // The service pulls everything from S3 at startup; say so rather than
+    // showing an empty-looking gallery while that runs.
+    if (progress.loading && !images.length) {
+      var pct = progress.total ? Math.round((progress.done / progress.total) * 100) : 0;
+      el.innerHTML =
+        '<div class="loading">Please wait, loading content…' +
+        '<div class="count">' + progress.done + ' / ' + (progress.total || '?') + ' loaded</div>' +
+        '<div class="bar"><span style="width:' + pct + '%"></span></div></div>';
+      return;
+    }
     if (!images.length) {
       el.innerHTML = '<div class="empty">No images cached yet.<br>Press <strong>Refresh</strong> to pull the latest from S3.</div>';
       return;
@@ -453,8 +474,16 @@ export function renderPage(): string {
   function load(initial) {
     return fetch('/api/images').then(function (r) { return r.json(); }).then(function (d) {
       images = d.images || [];
+      progress = d.progress || { loading: false, done: 0, total: 0 };
       render();
       if (initial && d.lastRefresh) setStatus('updated ' + fmtDate(d.lastRefresh));
+      // Keep polling until the startup load finishes, then show the grid.
+      if (progress.loading) {
+        setStatus('loading ' + progress.done + '/' + (progress.total || '?'));
+        setTimeout(function () { load(false); }, 900);
+      } else if (!initial) {
+        setStatus(images.length + ' images');
+      }
     });
   }
 
@@ -476,6 +505,7 @@ export function renderPage(): string {
       .then(function (d) {
         if (d) {
           images = d.images || [];
+          progress = d.progress || progress;
           render();
           setStatus(d.added + ' new, ' + images.length + ' cached');
         }
