@@ -12,11 +12,13 @@ describe('GET /', () => {
   });
 });
 
-describe('GET /favicon.svg', () => {
-  it('serves an SVG favicon', async () => {
-    const response = await request(createApp()).get('/favicon.svg');
+describe('GET /favicon.png', () => {
+  it('serves the skylar.technology logo as a PNG', async () => {
+    const response = await request(createApp()).get('/favicon.png');
 
     expect(response.status).toBe(200);
-    expect(response.headers['content-type']).toMatch(/image\/svg\+xml/);
+    expect(response.headers['content-type']).toMatch(/image\/png/);
+    // PNG magic number, so a corrupt base64 blob fails loudly.
+    expect(response.body.subarray(1, 4).toString()).toBe('PNG');
   });
 });
