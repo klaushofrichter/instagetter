@@ -402,8 +402,11 @@ export function renderPage(): string {
     if (m.location) rows += '<dt>Location</dt><dd>' + esc(m.location) + '</dd>';
     if (m.imgCount > 1) rows += '<dt>Carousel</dt><dd>image ' + m.imgIndex + ' of ' + m.imgCount + '</dd>';
     rows += '<dt>Size</dt><dd>' + m.width + ' &times; ' + m.height + '</dd>';
-    if (m.likes != null) rows += '<dt>Likes</dt><dd>' + m.likes + '</dd>';
     rows += '<dt>Post</dt><dd><a href="' + esc(m.postUrl) + '" target="_blank" rel="noopener noreferrer">open on Instagram</a></dd>';
+    // Keyed on the Instagram shortcode, so it survives newer uploads shifting
+    // every position — unlike ?image=<number>.
+    var permalink = window.location.origin + '/?image=' + encodeURIComponent(m.shortcode);
+    rows += '<dt>Permalink</dt><dd><a href="' + esc(permalink) + '">instagetter permalink</a></dd>';
     $('meta').innerHTML = '<p class="caption">' + (m.caption ? esc(m.caption) : '<em>no caption</em>') + '</p><dl>' + rows + '</dl>';
     renderFsMeta(m);
     if (!$('modal').open) $('modal').showModal();
@@ -415,7 +418,6 @@ export function renderPage(): string {
     if (m.location) facts.push(esc(m.location));
     if (m.imgCount > 1) facts.push('image ' + m.imgIndex + ' of ' + m.imgCount);
     facts.push(m.width + ' \u00d7 ' + m.height);
-    if (m.likes != null) facts.push(m.likes + (Number(m.likes) === 1 ? ' like' : ' likes'));
     $('fsmeta').innerHTML =
       '<p class="fs-caption">' + (m.caption ? esc(m.caption) : '<em>no caption</em>') + '</p>' +
       '<p class="fs-facts">' + facts.join(' &middot; ') + '</p>' +
@@ -619,6 +621,24 @@ export function renderPage(): string {
   // what the UI displays. Anything out of range or unparseable is ignored and
   // we simply stay on the first page — best effort, never an error message.
   // image wins over page when both are present.
+  // Accepts a 1-based position, an exact slot id (CODE_02), or a bare
+  // shortcode (CODE, matching its first slot). Returns -1 if nothing matches.
+  function resolveIndex(raw) {
+    var value = String(raw).trim();
+    if (!value) return -1;
+    if (/^\d+$/.test(value)) {
+      var n = parseInt(value, 10);
+      return (n >= 1 && n <= images.length) ? n - 1 : -1;
+    }
+    for (var i = 0; i < images.length; i++) {
+      if (images[i].id === value) return i;
+    }
+    for (var j = 0; j < images.length; j++) {
+      if (images[j].shortcode === value) return j;
+    }
+    return -1;
+  }
+
   function applyDeepLink() {
     if (deepLinkDone || !images.length) return;
     deepLinkDone = true;
@@ -627,16 +647,22 @@ export function renderPage(): string {
 
     var rawImage = params.get('image');
     if (rawImage !== null) {
-      var n = parseInt(rawImage, 10);
-      if (n >= 1 && n <= images.length) { open(n - 1); return; }
-      return; // out of range: ignore it, and ignore ?page too since image wins
+      var idx = resolveIndex(rawImage);
+      if (idx >= 0) open(idx);
+      return; // image wins: ignore ?page whether or not this resolved
     }
 
     var rawPage = params.get('page');
     if (rawPage !== null) {
-      var p = parseInt(rawPage, 10);
       var pages = Math.ceil(images.length / PER_PAGE);
-      if (p >= 1 && p <= pages) { page = p - 1; render(); }
+      if (/^\d+$/.test(rawPage.trim())) {
+        var p = parseInt(rawPage, 10);
+        if (p >= 1 && p <= pages) { page = p - 1; render(); }
+        return;
+      }
+      // A shortcode: show whichever page currently holds that image.
+      var byCode = resolveIndex(rawPage);
+      if (byCode >= 0) { page = Math.floor(byCode / PER_PAGE); render(); }
     }
   }
 

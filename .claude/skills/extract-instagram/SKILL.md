@@ -146,8 +146,8 @@ the page but does not trigger the fetch; real wheel events do.
 
 ## Cadence
 
-Runs nightly at 02:35 CT. The machine is `America/Chicago`, so a cron
-expression of `35 2 * * *` in local time is already CT — no conversion.
+Runs nightly at 02:48 CT. The machine is `America/Chicago`, so a cron
+expression of `48 2 * * *` in local time is already CT — no conversion.
 
 Each run: catch up on new posts, then backfill twelve older ones. At twelve a
 night the ~1,285-post archive takes a few months to walk, which is the point —

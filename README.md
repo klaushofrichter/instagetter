@@ -133,7 +133,8 @@ name links to this repository.
 ### Detail view
 
 Clicking a tile opens the image at full resolution alongside its caption, date,
-location, dimensions, likes, and a link to the original post. Previous and next
+location, dimensions, and links to the original post and to a stable
+permalink. Previous and next
 are available as on-image buttons or with the cursor keys, plus buttons to
 download the file, enter fullscreen, and close.
 
@@ -173,6 +174,39 @@ needs no visible controls beyond the `X`:
 The top strip takes precedence over the side zones, so a near miss on the `X`
 closes fullscreen rather than skipping to the next image. The `X` itself is
 enlarged on touch devices.
+
+### Linking to a page or image
+
+Both parameters are accepted on the gallery URL. Anything unrecognised or out
+of range is ignored and the first page is shown — never an error. If both are
+given, `image` wins silently.
+
+| URL | Effect |
+|---|---|
+| `?page=3` | show the third page |
+| `?image=23` | open the 23rd image |
+| `?page=DTWA5w4EkHW` | show whichever page currently holds that post |
+| `?image=DTWA5w4EkHW` | open that post |
+| `?image=DS0ovdXklvR_02` | open a specific carousel slide |
+
+**Numbers are positions, not identities.** `?image=1` means "whatever is newest
+right now", so it points at something different after the next upload. That is
+fine for a quick link, but not for one you intend to keep.
+
+**Shortcodes are stable.** `?image=DTWA5w4EkHW` is Instagram's own id for the
+post and always resolves to the same picture however many newer images arrive
+above it. `?page=<shortcode>` is stable in the sense that matters: it shows the
+page *currently* holding that image, so the link keeps working as the pagination
+shifts beneath it, rather than silently drifting to a different set of nine.
+
+The detail view shows this as **instagetter permalink** beside the link to
+Instagram. The shortcode is also embedded in each JPEG — as `XMP-dc:Identifier`,
+and within the post URL in `XMP-dc:Source` — so a downloaded file can be traced
+back to its post and its permalink.
+
+Likes are deliberately **not shown**. The count is only true at the moment of
+extraction, and a stale number displayed as fact is worse than no number. It is
+still captured in the sidecar metadata and the embedded EXIF.
 
 ## Deployment
 

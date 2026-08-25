@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Nightly Instagram extraction, run from cron at 02:35 CT.
+# Nightly Instagram extraction, run from cron at 02:48 CT.
 #
 # Cron provides almost no environment, so everything is explicit: node lives
 # under nvm and claude under ~/.local/bin, neither on cron's default PATH.
@@ -28,6 +28,8 @@ fi
 
 # Keys from the shared credentials file, bucket/region from .env.
 export AWS_SHARED_CREDENTIALS_FILE="$HOME/Development/kubesetup/credentials-insta"
+# Stamped into state.json by --record so the run can be attributed to cron.
+export INSTAGETTER_RUN_SOURCE=cron
 set -a; . "$PROJECT/.env"; set +a
 
 echo "=== $(date -Is) starting nightly extraction ===" >> "$LOG"
