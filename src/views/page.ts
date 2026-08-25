@@ -16,6 +16,7 @@ export function renderPage(): string {
     --bg: #ffffff; --fg: #14161a; --muted: #6b7280; --line: #e5e7eb;
     --card: #fafafa; --accent: #c13584; --overlay: rgba(255,255,255,.96);
     --btn: #f3f4f6; --btn-fg: #14161a;
+    --fsmeta-bg: rgba(240,240,243,.86); --fsmeta-fg: #14161a; --fsmeta-muted: #4b5563;
     color-scheme: light;
   }
   @media (prefers-color-scheme: dark) {
@@ -23,6 +24,7 @@ export function renderPage(): string {
       --bg: #0f1115; --fg: #eef1f5; --muted: #9aa3af; --line: #262b33;
       --card: #171a20; --overlay: rgba(10,12,15,.97);
       --btn: #232830; --btn-fg: #eef1f5;
+      --fsmeta-bg: rgba(12,14,18,.78); --fsmeta-fg: #f3f5f8; --fsmeta-muted: #b6bec9;
       color-scheme: dark;
     }
   }
@@ -30,6 +32,7 @@ export function renderPage(): string {
     --bg: #0f1115; --fg: #eef1f5; --muted: #9aa3af; --line: #262b33;
     --card: #171a20; --overlay: rgba(10,12,15,.97);
     --btn: #232830; --btn-fg: #eef1f5;
+    --fsmeta-bg: rgba(12,14,18,.78); --fsmeta-fg: #f3f5f8; --fsmeta-muted: #b6bec9;
     color-scheme: dark;
   }
   :root[data-theme="light"] { color-scheme: light; }
@@ -138,6 +141,22 @@ export function renderPage(): string {
   .fs-close:hover { background: rgba(0,0,0,.75); border-color: transparent; }
   #stage:fullscreen .fs-close { display: inline-grid; }
   .stage img { cursor: zoom-in; }
+  /* Fullscreen metadata overlay, toggled with the space bar. Only ever shown
+     inside :fullscreen, so it cannot intrude on the normal detail view. */
+  .fs-meta { display: none; }
+  #stage:fullscreen .fs-meta.on {
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    position: absolute; left: 0; right: 0; bottom: 0;
+    min-height: 20vh; padding: 1rem 2rem;
+    background: var(--fsmeta-bg); color: var(--fsmeta-fg);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    text-align: center; z-index: 3;
+  }
+  .fs-meta .fs-caption { font-size: 1.05rem; line-height: 1.5; margin: 0 0 .5rem;
+    max-width: 60rem; }
+  .fs-meta .fs-facts { font-size: .85rem; color: var(--fsmeta-muted); margin: 0; }
+  .fs-meta .fs-hint { font-size: .72rem; color: var(--fsmeta-muted); margin: .55rem 0 0;
+    opacity: .75; }
 </style>
 </head>
 <body>
@@ -204,6 +223,7 @@ export function renderPage(): string {
       <button class="nav prev" id="prev" aria-label="Previous image">&#8249;</button>
       <img id="full" alt="" title="Click for fullscreen">
       <button class="nav next" id="next" aria-label="Next image">&#8250;</button>
+      <div id="fsmeta" class="fs-meta"></div>
       <button id="fsclose" class="icon-btn fs-close" title="Exit fullscreen (Esc)" aria-label="Exit fullscreen">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
       </button>
@@ -301,9 +321,27 @@ export function renderPage(): string {
     if (m.likes != null) rows += '<dt>Likes</dt><dd>' + m.likes + '</dd>';
     rows += '<dt>Post</dt><dd><a href="' + esc(m.postUrl) + '" target="_blank" rel="noopener noreferrer">open on Instagram</a></dd>';
     $('meta').innerHTML = '<p class="caption">' + (m.caption ? esc(m.caption) : '<em>no caption</em>') + '</p><dl>' + rows + '</dl>';
+    renderFsMeta(m);
     if (!$('modal').open) $('modal').showModal();
     // Keep the grid on the page the image belongs to.
     page = Math.floor(i / PER_PAGE);
+  }
+
+  function renderFsMeta(m) {
+    var facts = [];
+    facts.push(fmtDate(m.takenAt));
+    if (m.location) facts.push(esc(m.location));
+    if (m.imgCount > 1) facts.push('image ' + m.imgIndex + ' of ' + m.imgCount);
+    facts.push(m.width + ' \u00d7 ' + m.height);
+    if (m.likes != null) facts.push(m.likes + (Number(m.likes) === 1 ? ' like' : ' likes'));
+    $('fsmeta').innerHTML =
+      '<p class="fs-caption">' + (m.caption ? esc(m.caption) : '<em>no caption</em>') + '</p>' +
+      '<p class="fs-facts">' + facts.join(' &middot; ') + '</p>' +
+      '<p class="fs-hint">space to hide</p>';
+  }
+
+  function toggleFsMeta() {
+    $('fsmeta').classList.toggle('on');
   }
 
   function step(delta) {
@@ -366,6 +404,7 @@ export function renderPage(): string {
     $('fs').innerHTML = on ? ICON_COMPRESS : ICON_EXPAND;
     $('fs').setAttribute('aria-label', on ? 'Exit fullscreen' : 'Enter fullscreen');
     $('fs').setAttribute('title', on ? 'Exit fullscreen (Esc)' : 'Fullscreen (f)');
+    if (!on) $('fsmeta').classList.remove('on');
   });
   $('modal').addEventListener('close', function () { render(); });
 
@@ -374,6 +413,10 @@ export function renderPage(): string {
     if (e.key === 'ArrowLeft') { e.preventDefault(); step(-1); }
     else if (e.key === 'ArrowRight') { e.preventDefault(); step(1); }
     else if (e.key === 'f' || e.key === 'F') { $('fs').click(); }
+    else if (e.key === ' ' || e.code === 'Space') {
+      // Only in fullscreen, and preventDefault so the page does not scroll.
+      if (document.fullscreenElement) { e.preventDefault(); toggleFsMeta(); }
+    }
     // Escape closes the dialog natively; if we are fullscreen the browser
     // consumes the first Escape to exit fullscreen, which is what we want.
   });
