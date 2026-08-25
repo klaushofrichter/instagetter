@@ -1,4 +1,5 @@
 const PROFILE_URL = 'https://www.instagram.com/klaushofrichter';
+const REPO_URL = 'https://github.com/klaushofrichter/instagetter';
 
 export function renderPage(): string {
   return `<!doctype html>
@@ -8,7 +9,7 @@ export function renderPage(): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <title>instagetter</title>
-<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon.png" type="image/png">
 <style>
   :root {
     --bg: #ffffff; --fg: #14161a; --muted: #6b7280; --line: #e5e7eb;
@@ -45,6 +46,16 @@ export function renderPage(): string {
   }
   button:hover:not(:disabled) { border-color: var(--accent); }
   button:disabled { opacity: .5; cursor: not-allowed; }
+  .icon-btn {
+    display: inline-grid; place-items: center; width: 2.2rem; height: 2.2rem;
+    padding: 0; border-radius: 8px; line-height: 0;
+  }
+  .icon-btn svg { width: 1.15rem; height: 1.15rem; fill: none; stroke: currentColor;
+    stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .icon-btn.spin svg { animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  a.title-link { color: inherit; text-decoration: none; }
+  a.title-link:hover { color: var(--accent); }
   .status { color: var(--muted); font-size: .85rem; min-height: 1.2em; }
 
   .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; }
@@ -93,12 +104,16 @@ export function renderPage(): string {
 <body>
 <div class="wrap">
   <header>
-    <h1><span class="dot"></span>instagetter</h1>
+    <h1><span class="dot"></span><a class="title-link" href="${REPO_URL}" target="_blank" rel="noopener noreferrer" title="Source on GitHub">instagetter</a></h1>
     <a href="${PROFILE_URL}" target="_blank" rel="noopener noreferrer">@klaushofrichter</a>
     <span class="spacer"></span>
     <span class="status" id="status"></span>
-    <button id="theme" title="Toggle light / dark">Theme</button>
-    <button id="refresh">Refresh</button>
+    <button id="theme" class="icon-btn" title="Toggle light / dark" aria-label="Toggle light or dark theme">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+    </button>
+    <button id="refresh" class="icon-btn" title="Check S3 for new images" aria-label="Refresh">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg>
+    </button>
   </header>
   <div id="content"></div>
 </div>
@@ -110,7 +125,9 @@ export function renderPage(): string {
       <span class="spacer"></span>
       <button id="fs">Fullscreen</button>
       <a id="dl"><button>Download</button></a>
-      <button id="close">Close</button>
+      <button id="close" class="icon-btn" title="Close (Esc)" aria-label="Close">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
     </div>
     <div class="stage">
       <button class="nav prev" id="prev" aria-label="Previous image">&#8249;</button>
@@ -220,11 +237,26 @@ export function renderPage(): string {
   $('next').onclick = function () { step(1); };
   $('close').onclick = function () { $('modal').close(); };
   $('fs').onclick = function () {
-    // Fullscreen the dialog itself so the nav buttons and key handler stay live.
-    var el = $('modal');
-    if (document.fullscreenElement) document.exitFullscreen();
-    else if (el.requestFullscreen) el.requestFullscreen();
+    // Fullscreen the document element, NOT the <dialog>: a dialog opened with
+    // showModal() is already in the top layer, and requestFullscreen() on it
+    // rejects in Chrome — silently, since the promise was never handled. The
+    // modal still paints above a fullscreen <html>, and because the keydown
+    // handler is bound to document, the cursor keys keep working in fullscreen.
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(function (e) { console.error('exitFullscreen', e); });
+    } else {
+      var el = document.documentElement;
+      var req = el.requestFullscreen || el.webkitRequestFullscreen;
+      if (req) {
+        var r = req.call(el);
+        if (r && r.catch) r.catch(function (e) { console.error('requestFullscreen failed', e); });
+      }
+    }
   };
+
+  document.addEventListener('fullscreenchange', function () {
+    $('fs').textContent = document.fullscreenElement ? 'Exit fullscreen' : 'Fullscreen';
+  });
   $('modal').addEventListener('close', function () { render(); });
 
   document.addEventListener('keydown', function (e) {

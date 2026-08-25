@@ -1,64 +1,144 @@
 # instagetter
 
-Service behind **https://insta.skylar.technology**. Shows the newest images from
-[@klaushofrichter](https://www.instagram.com/klaushofrichter) in an
-Instagram-like grid, reading them from S3. In-memory/on-disk cache only — S3 is
-the source of truth and the cache is disposable.
+A small self-hosted gallery for your own Instagram photos, running at
+**[insta.skylar.technology](https://insta.skylar.technology)**.
 
-## Pipeline
+It extracts the newest posts from a single Instagram account you control,
+stores them in S3 at full resolution with their metadata, and serves them as a
+responsive grid with a lightbox. The site itself never talks to Instagram.
 
-    local Chrome (claude-in-chrome)  ->  staging dir  ->  S3  ->  service  ->  browser
-        /extract-instagram skill         upload-to-s3.js      refresh/cache    gallery
+> Scope note: this is deliberately *not* a scraper. It reads the newest posts
+> of one account — the owner's own — on demand, driven by a human-in-the-loop
+> browser session. There is no bulk crawling and no third-party accounts.
 
-Extraction runs on the user's machine, never in the container: it drives the
-logged-in local Chrome. The service only ever reads S3.
+## How it works
 
-## Commands
-
-```bash
-npm install     # dependencies
-npm run dev     # tsx against .env
-npm run build   # tsc -> dist/
-npm test        # vitest run
-
-export AWS_SHARED_CREDENTIALS_FILE=$HOME/Development/kubesetup/credentials-insta
-node scripts/known-ids.js                        # slot ids already in S3
-node scripts/upload-to-s3.js --staging <dir>     # embed EXIF, thumbnail, upload, prune
+```
+   your Chrome                  your machine              AWS            the cluster
+┌────────────────┐          ┌──────────────────┐      ┌───────┐      ┌──────────────┐
+│ instagram.com  │  images  │ upload-to-s3.js  │      │       │      │  instagetter │
+│  (logged in)   ├─────────►│  EXIF + thumbs   ├─────►│  S3   │◄─────┤   Express    │
+└────────────────┘  + meta  └──────────────────┘      │       │ pull └──────┬───────┘
+        ▲                                             └───────┘             │
+        │ /extract-instagram skill                                          ▼
+   (Claude drives it)                                                    visitors
 ```
 
-To fetch new images, run the `/extract-instagram` skill, then press **Refresh**
-on the page.
+Extraction runs **on your machine**, because it uses your logged-in browser.
+The deployed service only ever reads from S3, so it can restart, scale, or be
+redeployed without touching Instagram.
+
+### Why the browser
+
+Instagram's public HTML is the only interface used. Headless automation is
+blocked by bot detection, and the private API is off-limits by choice, so
+extraction is driven through a real logged-in Chrome session by
+[Claude in Chrome](https://claude.ai/code). Image URLs are fetched and handled
+entirely inside the page.
+
+## Quick start
+
+```bash
+npm install
+cp .env.example .env        # then fill in the values
+npm run dev                 # http://localhost:8080
+npm test
+```
+
+The server refuses to start if required configuration is missing, so a
+misconfigured deploy fails immediately rather than serving errors.
+
+## Configuration
+
+| Variable | Required | Meaning |
+|---|---|---|
+| `INSTA_API_TOKENS` | yes | Comma-separated bearer tokens for the protected API. Rotate by adding a new one, deploying, then dropping the old. |
+| `S3_BUCKET` | yes | Bucket holding images, thumbnails and metadata. |
+| `AWS_REGION` | yes | Bucket region. |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | yes | Credentials scoped to that one bucket. |
+| `CACHE_DIR` | no | Local image cache (default `/tmp/instagetter-cache`). |
+| `CACHE_LIMIT` | no | Images cached locally, newest first (default `99`). |
+| `REFRESH_MIN_INTERVAL_MS` | no | Server-enforced gap between refreshes (default `5000`). |
+| `BROWSE_RATE_LIMIT` | no | Page/image requests per minute per IP (default `600`). |
+| `S3_KEEP` | no | Slots retained in S3 by the upload script (default `999`). |
 
 ## Endpoints
 
 | Endpoint | Auth | Purpose |
 |---|---|---|
-| `GET /` | public | gallery page |
-| `GET /api/images` | public | cached image metadata |
+| `GET /` | public | the gallery |
+| `GET /api/images` | public | cached image metadata as JSON |
 | `POST /api/refresh` | public, 1 per 5s per IP | re-sync from S3 |
 | `GET /thumb/:id.jpg` | public | grid thumbnail (~640px) |
 | `GET /image/:id.jpg` | public | full-resolution image |
-| `GET /download/:id.jpg` | public | same, as an attachment |
-| `GET /health` | public | `{"status":"ok"}` |
+| `GET /download/:id.jpg` | public | same, as a file download |
+| `GET /health` | public | readiness probe |
 | `GET /robots.txt` | public | disallow all |
-| `GET /api/status` | bearer token | placeholder |
+| `GET /api/status` | bearer token | placeholder for future API |
 
-## Storage
+## Storage layout
 
-    s3://<bucket>/index.json           every slot, newest first (one GET per refresh)
-    s3://<bucket>/images/<id>.jpg      full-res, EXIF/IPTC embedded
-    s3://<bucket>/thumbs/<id>.jpg      ~640px grid thumbnail
-    s3://<bucket>/meta/<id>.json       sidecar metadata
+```
+s3://<bucket>/index.json        every slot, newest first — one GET per refresh
+s3://<bucket>/images/<id>.jpg   full resolution, EXIF/IPTC embedded
+s3://<bucket>/thumbs/<id>.jpg   ~640px grid thumbnail
+s3://<bucket>/meta/<id>.json    sidecar metadata
+```
 
-A slot id is `<shortcode>_<NN>`, where `NN` is the 1-based carousel index — so a
-two-image carousel takes two slots, adjacent in the sequence.
+A slot id is `<shortcode>_<NN>`, where `NN` is the 1-based carousel index. A
+two-image carousel therefore occupies two slots, adjacent in the sequence and
+badged `1/2`, `2/2` in the grid.
 
-Retention: the upload script prunes S3 to the newest **999** slots by post date;
-the service caches the newest **99** locally, evicting by post date (not by last
-access). Restarting loses the cache and re-pulls from S3.
+Captions, dates, locations and hashtags are written into each JPEG as
+EXIF/IPTC/XMP as well as the sidecar, so a downloaded file describes itself.
+
+**Retention.** The upload script keeps the newest `S3_KEEP` slots in S3 and
+deletes the rest. The service caches the newest `CACHE_LIMIT` locally, evicting
+by *post date* rather than least-recently-used, so an old favourite still ages
+out. The cache is disposable: S3 is the source of truth and a restart refills it.
+
+## Extracting new images
+
+With [Claude Code](https://claude.com/claude-code):
+
+```
+/extract-instagram
+```
+
+It opens your logged-in Chrome, walks the newest posts, downloads each image
+with its metadata, and runs the uploader. Then press **Refresh** on the page.
+Intended for roughly daily use; it is not time critical and prefers waiting
+over speed.
+
+Manual equivalents:
+
+```bash
+node scripts/known-ids.js                      # what is already in S3
+node scripts/upload-to-s3.js --staging <dir>   # add --dry-run to preview
+```
+
+The uploader needs `exiftool` and `sharp`; neither ships in the container.
+
+## The page
+
+Three-column grid on desktop, a single stacked column on narrow screens, nine
+per page with pagination. Clicking a tile opens a lightbox with the
+full-resolution image and its metadata, previous/next by button or cursor key,
+fullscreen, and download. `Esc` closes it. Light and dark themes follow the
+system setting, with a manual toggle remembered per browser.
 
 ## Deployment
 
-Promotion flow: push to `main` publishes an image; a PR into `production` must
-pass tests + build + CodeQL; merging to `production` deploys to k3s. Cluster
-manifests live in the `kube-setup` repo. See CLAUDE.md for the prerequisites.
+A promotion flow:
+
+1. push to `main` → tests run, image published to GHCR
+2. PR into `production` → tests, build and a CodeQL scan must pass
+3. merge → the self-hosted runner builds, updates the Knative manifest, applies
+   it, and smoke-tests the result
+
+Cluster manifests live in a separate repository. See `CLAUDE.md` for the
+prerequisites a deploy depends on.
+
+## License
+
+No license is granted; this is a personal project published for reference.
