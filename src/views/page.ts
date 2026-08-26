@@ -1,6 +1,12 @@
 const PROFILE_URL = 'https://www.instagram.com/klaushofrichter';
 const REPO_URL = 'https://github.com/klaushofrichter/instagetter';
 const SKYLAR_URL = 'https://www.skylar.technology';
+// Baked in by the Docker build (ARG APP_VERSION); "dev" when running locally.
+// Read per render rather than at module load, so the value is observable
+// rather than frozen at import time.
+function appVersion(): string {
+  return process.env.APP_VERSION || 'dev';
+}
 
 export function renderPage(): string {
   return `<!doctype html>
@@ -113,6 +119,7 @@ export function renderPage(): string {
   #about p { margin: 0 0 .7rem; }
   .about-links { color: var(--muted); font-size: .87rem; margin-bottom: 0 !important; }
   .about-updated { color: var(--muted); font-size: .87rem; }
+  .about-version { color: var(--muted); font-size: .8rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   .about-nav { color: var(--muted); font-size: .87rem; }
   .about-nav kbd {
     font: inherit; background: var(--card); border: 1px solid var(--line);
@@ -271,6 +278,7 @@ export function renderPage(): string {
       details. <kbd>Esc</kbd> steps back one level: out of fullscreen, then out
       of the picture, back to the grid.</p>
     <p class="about-updated" id="about-updated"></p>
+    <p class="about-version">version ${appVersion()}</p>
     <p class="about-links">
       <a href="${PROFILE_URL}" target="_blank" rel="noopener noreferrer">@klaushofrichter</a>
       &middot; <a href="${REPO_URL}" target="_blank" rel="noopener noreferrer">source on GitHub</a>

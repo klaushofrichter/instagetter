@@ -68,6 +68,8 @@ jobs:
           push: true
           # latest is published here rather than from main, so that pulling it
           # gives what is actually deployed rather than an untested build.
+          build-args: |
+            APP_VERSION=v${{ steps.ver.outputs.version }}
           tags: |
             ghcr.io/klaushofrichter/instagetter:${{ github.sha }}
             ghcr.io/klaushofrichter/instagetter:v${{ steps.ver.outputs.version }}

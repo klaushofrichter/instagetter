@@ -39,6 +39,8 @@ jobs:
           # Deliberately not :latest — main is not what runs in production, and
           # tagging it latest meant pulling that image gave an undeployed build.
           # The production deploy publishes :latest and the version tag.
+          build-args: |
+            APP_VERSION=main
           tags: |
             ghcr.io/klaushofrichter/instagetter:main
             ghcr.io/klaushofrichter/instagetter:${{ github.sha }}
