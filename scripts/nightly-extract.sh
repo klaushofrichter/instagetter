@@ -39,13 +39,18 @@ echo "=== $(date -Is) starting nightly extraction ===" >> "$LOG"
 # failure: it looks fine in every log and metric.
 BEFORE=$(node scripts/state.js 2>/dev/null | python3 -c 'import json,sys;print(json.load(sys.stdin).get("lastRun",""))' 2>/dev/null || true)
 
-timeout 3600 claude -p "/extract-instagram
+# --chrome is what makes the Claude-in-Chrome tools exist in a headless run.
+# Without it the browser tools are simply absent and the run does nothing.
+# stream-json plus the formatter means the log narrates the run live. Buffered
+# output made a twelve-minute extraction indistinguishable from a hang.
+timeout 3600 claude -p --chrome --output-format stream-json --verbose "/extract-instagram
 
 Nightly run. Phase 1: check the top of the klaushofrichter profile for posts newer than what is already in S3, and extract any found. Phase 2: backfill 12 older posts starting from the backfillCursor in state.json, completing any carousel in full even if that exceeds 12. Skip videos and reels, recording each with scripts/state.js --skip. Verify every download on disk before staging. Upload to S3, move the cursor with scripts/state.js --set-cursor, record counts with scripts/state.js --record, then POST to https://insta.skylar.technology/api/refresh. Finish with a one-paragraph summary of what was added, or why nothing was." \
   --allowed-tools \
     "Bash" \
     "Read" \
     "Write" \
+    "ToolSearch" \
     "mcp__claude-in-chrome__navigate" \
     "mcp__claude-in-chrome__javascript_tool" \
     "mcp__claude-in-chrome__computer" \
@@ -53,9 +58,12 @@ Nightly run. Phase 1: check the top of the klaushofrichter profile for posts new
     "mcp__claude-in-chrome__tabs_create_mcp" \
     "mcp__claude-in-chrome__tabs_close_mcp" \
     "mcp__claude-in-chrome__read_console_messages" \
-  >> "$LOG" 2>&1
+    "mcp__claude-in-chrome__select_browser" \
+    "mcp__claude-in-chrome__list_connected_browsers" \
+  2>&1 | python3 "$PROJECT/scripts/format-stream.py" >> "$LOG"
 
-STATUS=$?
+# The claude exit code, not the formatter's.
+STATUS=${PIPESTATUS[0]}
 
 AFTER=$(node scripts/state.js 2>/dev/null | python3 -c 'import json,sys;print(json.load(sys.stdin).get("lastRun",""))' 2>/dev/null || true)
 if [ "$STATUS" -eq 0 ] && [ "$BEFORE" = "$AFTER" ]; then
