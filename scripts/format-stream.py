@@ -27,6 +27,16 @@ def brief(value, limit: int = 110) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
+# Accumulated so the run can report what it actually cost, rather than leaving
+# the next cost question to guesswork.
+totals = {
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "cache_creation_input_tokens": 0,
+    "cache_read_input_tokens": 0,
+}
+model_seen = set()
+
 for line in sys.stdin:
     line = line.strip()
     if not line:
@@ -42,6 +52,15 @@ for line in sys.stdin:
         emit(f"session {event.get('session_id', '?')[:8]} started")
 
     elif kind == "assistant":
+        message = event.get("message", {}) or {}
+        if message.get("model"):
+            model_seen.add(message["model"])
+        usage = message.get("usage") or {}
+        for key in totals:
+            value = usage.get(key)
+            if isinstance(value, int):
+                totals[key] += value
+
         for block in event.get("message", {}).get("content", []):
             if block.get("type") == "text" and block.get("text", "").strip():
                 emit(brief(block["text"], 400))
@@ -65,4 +84,11 @@ for line in sys.stdin:
             f"result: {'ERROR' if err else 'ok'} "
             f"turns={turns} api={secs:.0f}s"
             + (f" cost=${cost:.2f}" if isinstance(cost, (int, float)) else "")
+        )
+        emit(
+            "tokens: model=" + (",".join(sorted(model_seen)) or "?")
+            + f" out={totals['output_tokens']:,}"
+            + f" cache_write={totals['cache_creation_input_tokens']:,}"
+            + f" cache_read={totals['cache_read_input_tokens']:,}"
+            + f" fresh_in={totals['input_tokens']:,}"
         )

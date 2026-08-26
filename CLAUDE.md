@@ -134,6 +134,28 @@ Two consequences worth keeping:
   default; with a macOS browser also connected that is luck, not choice, and an
   unlucky night drives a logged-out profile.
 
+### Model and cost
+
+The nightly run uses `--model sonnet` (resolves to `claude-sonnet-5`). Measured
+from a real Opus run (session `bf6e4994`): 714k input-equivalent tokens and 36k
+output for twelve images, reported as $3.32. Re-priced on the same token mix,
+Sonnet is roughly 60% of that — 40% while its introductory pricing lasts — and
+Haiku 4.5 about 20%.
+
+Cost is not the interesting risk. This skill is full of traps that fail
+*quietly*: carousels needing `?img_index=`, blocked downloads reporting success,
+a loose selector picking up other posts' images, an "AI content" badge sitting
+where the location goes. The no-op guard catches a run that records nothing; it
+cannot catch a run that records twelve images with wrong captions. When changing
+model or effort, check the output rather than just the exit code.
+
+Haiku 4.5 also has a 200K context window against 1M for the others. The Opus run
+averaged ~52K per turn, so it would probably fit, but a night of long carousels
+could exceed it mid-run.
+
+`scripts/format-stream.py` logs the token totals per run, so the next comparison
+is measurement rather than estimate.
+
 Output streams as NDJSON through `scripts/format-stream.py`. Buffered output
 made a twelve-minute extraction look identical to a hang, and cost a run that
 had already succeeded.

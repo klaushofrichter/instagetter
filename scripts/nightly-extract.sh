@@ -43,7 +43,10 @@ BEFORE=$(node scripts/state.js 2>/dev/null | python3 -c 'import json,sys;print(j
 # Without it the browser tools are simply absent and the run does nothing.
 # stream-json plus the formatter means the log narrates the run live. Buffered
 # output made a twelve-minute extraction indistinguishable from a hang.
-timeout 3600 claude -p --chrome --output-format stream-json --verbose "/extract-instagram
+# Sonnet 5 rather than Opus: measured at roughly 40-60% of the cost for this
+# workload (see CLAUDE.md). Watch the output quality — this skill is trap-laden
+# and a weaker model fails quietly rather than loudly.
+timeout 3600 claude -p --chrome --model sonnet --output-format stream-json --verbose "/extract-instagram
 
 Nightly run. Phase 1: check the top of the klaushofrichter profile for posts newer than what is already in S3, and extract any found. Phase 2: backfill 12 older posts starting from the backfillCursor in state.json, completing any carousel in full even if that exceeds 12. Skip videos and reels, recording each with scripts/state.js --skip. Verify every download on disk before staging. Upload to S3, move the cursor with scripts/state.js --set-cursor, record counts with scripts/state.js --record, then POST to https://insta.skylar.technology/api/refresh. Finish with a one-paragraph summary of what was added, or why nothing was." \
   --allowed-tools \
