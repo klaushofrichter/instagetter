@@ -13,6 +13,8 @@ jobs:
     runs-on: [self-hosted, k3s]
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # release notes are computed from history and tags
 
       - name: Install kubectl and configure in-cluster access
         run: |
@@ -33,11 +35,22 @@ jobs:
           kubectl config set-context in-cluster --cluster=in-cluster --user=deploy-sa --namespace=insta
           kubectl config use-context in-cluster
 
-      - name: Read the version being released
+      - name: Generate the version
         id: ver
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          VERSION=$(node -p "require('./package.json').version")
+          # Calendar versioning, generated here rather than carried in the
+          # sources: nothing to remember to bump, and the number says when the
+          # build shipped. Dated in Central time so an evening deploy is not
+          # filed under tomorrow.
+          DATE=$(TZ=America/Chicago date +%Y.%m.%d)
+          # Same-day counter, derived from the releases that already exist —
+          # the tags are the state, so nothing needs storing.
+          TODAY=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 200 \
+                    --json tagName -q '.[].tagName' | grep -c "^v${DATE}\." || true)
+          VERSION="${DATE}.$((TODAY + 1))"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Releasing v$VERSION"
 
@@ -104,16 +117,30 @@ jobs:
             echo "$TAG already released — version not bumped, skipping."
             exit 0
           fi
-          # Release notes are that version's section of the changelog.
-          awk -v tag="## [${VERSION}]" '
-            index($0, tag) == 1 { grab = 1; next }
+          # Notes: whatever was curated under Unreleased, then the commits
+          # since the previous release. Neither needs maintaining for a release
+          # to be readable.
+          : > /tmp/notes.md
+          awk '
+            /^## \[Unreleased\]/ { grab = 1; next }
             grab && /^## \[/ { exit }
             grab { print }
-          ' CHANGELOG.md > /tmp/notes.md
-          if [ ! -s /tmp/notes.md ]; then
-            echo "No changelog section for ${VERSION}; releasing without notes."
-            echo "Deployed from ${GITHUB_SHA}." > /tmp/notes.md
+          ' CHANGELOG.md | sed '/^[[:space:]]*$/d' > /tmp/curated.md
+          if [ -s /tmp/curated.md ]; then
+            cat /tmp/curated.md >> /tmp/notes.md
+            printf '\n' >> /tmp/notes.md
           fi
+          PREV=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 1 \
+                   --json tagName -q '.[0].tagName' 2>/dev/null || true)
+          printf '### Changes\n\n' >> /tmp/notes.md
+          if [ -n "$PREV" ] && git rev-parse "$PREV" >/dev/null 2>&1; then
+            git log --no-merges --pretty='- %s' "${PREV}..HEAD" >> /tmp/notes.md
+            printf '\n**Full diff**: %s/compare/%s...%s\n' \
+              "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" "$PREV" "$TAG" >> /tmp/notes.md
+          else
+            git log --no-merges --pretty='- %s' -20 >> /tmp/notes.md
+          fi
+          printf '\nImage: `ghcr.io/klaushofrichter/instagetter:%s`\n' "$TAG" >> /tmp/notes.md
           gh release create "$TAG" \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
