@@ -9,9 +9,9 @@ preceded by anything curated under Unreleased below. The full history lives on
 the [releases page](https://github.com/klaushofrichter/instagetter/releases);
 this file is where notes are written *before* a release, not an archive of them.
 
+<!-- Anything written under Unreleased is prepended to the next release's
+     notes. Keep prose out of it unless you mean it to be published. -->
 ## [Unreleased]
-
-_Anything written here is included in the next release's notes._
 
 ## [1.0.0] - 2026-08-25
 
