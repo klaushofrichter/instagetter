@@ -76,6 +76,21 @@ Merging to `main` only publishes an image; promoting `main` into `production`
 is what actually deploys. Cluster manifests live in `kube-setup`
 (`manifests/insta/`), not in this repo.
 
+### Releasing
+
+A merge into `production` cuts a release: the deploy tags the image
+`v<version>` from `package.json`, moves `latest`, and — once the rollout is
+verified — creates the git tag and GitHub release, taking the notes from that
+version's section of `CHANGELOG.md`.
+
+So a change destined for production wants two things in the PR: a bumped
+`version` and a matching `CHANGELOG.md` section. Forgetting is not fatal — the
+release step sees the tag already exists and skips rather than failing — but the
+release then covers more than its notes describe.
+
+`latest` deliberately follows `production`, not `main`. It previously tracked
+`main`, which meant pulling `latest` gave a build that had never been deployed.
+
 ## Secrets
 
 - `INSTA_API_TOKENS` — runtime, from the `insta-secrets` Secret in the `insta`

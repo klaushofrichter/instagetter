@@ -242,6 +242,27 @@ A promotion flow:
 Cluster manifests live in a separate repository. See `CLAUDE.md` for the
 prerequisites a deploy depends on.
 
+### Releases
+
+Merging into `production` cuts a release. The version in `package.json`, the git
+tag, the GitHub release and the container image tag all name the same build.
+
+```
+ghcr.io/klaushofrichter/instagetter:v1.0.0   the released build
+ghcr.io/klaushofrichter/instagetter:latest   whatever production runs
+ghcr.io/klaushofrichter/instagetter:main     newest build of main, not deployed
+ghcr.io/klaushofrichter/instagetter:<sha>    every build, by commit
+```
+
+`latest` is published by the production deploy rather than by `main`, so pulling
+it gives what is actually deployed instead of an untested build.
+
+To release: bump `version` in `package.json`, add the matching section to
+`CHANGELOG.md`, and open the PR into `production`. After the rollout is verified
+the workflow tags the commit and creates the release, using that changelog
+section as the notes. If the version was not bumped the release step notices the
+tag already exists and skips it, so a redeploy is harmless.
+
 ## License
 
 [MIT](LICENSE) © 2026 Klaus Hofrichter
