@@ -34,6 +34,11 @@ set -a; . "$PROJECT/.env"; set +a
 
 echo "=== $(date -Is) starting nightly extraction ===" >> "$LOG"
 
+# Remember where the state stood, so a run that changed nothing can be told
+# apart from one that worked. Exit 0 with an empty result is worse than a
+# failure: it looks fine in every log and metric.
+BEFORE=$(node scripts/state.js 2>/dev/null | python3 -c 'import json,sys;print(json.load(sys.stdin).get("lastRun",""))' 2>/dev/null || true)
+
 timeout 3600 claude -p "/extract-instagram
 
 Nightly run. Phase 1: check the top of the klaushofrichter profile for posts newer than what is already in S3, and extract any found. Phase 2: backfill 12 older posts starting from the backfillCursor in state.json, completing any carousel in full even if that exceeds 12. Skip videos and reels, recording each with scripts/state.js --skip. Verify every download on disk before staging. Upload to S3, move the cursor with scripts/state.js --set-cursor, record counts with scripts/state.js --record, then POST to https://insta.skylar.technology/api/refresh. Finish with a one-paragraph summary of what was added, or why nothing was." \
@@ -51,6 +56,14 @@ Nightly run. Phase 1: check the top of the klaushofrichter profile for posts new
   >> "$LOG" 2>&1
 
 STATUS=$?
+
+AFTER=$(node scripts/state.js 2>/dev/null | python3 -c 'import json,sys;print(json.load(sys.stdin).get("lastRun",""))' 2>/dev/null || true)
+if [ "$STATUS" -eq 0 ] && [ "$BEFORE" = "$AFTER" ]; then
+  echo "NO-OP: the run reported success but recorded nothing — state.json is unchanged." >> "$LOG"
+  echo "       Nothing was extracted. See the transcript above for why." >> "$LOG"
+  STATUS=2
+fi
+
 echo "=== $(date -Is) finished, exit $STATUS ===" >> "$LOG"
 
 # Keep a fortnight of logs.

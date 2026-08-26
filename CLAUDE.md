@@ -116,6 +116,21 @@ do nothing.
   pruned after a fortnight.
 - It sits eighteen minutes after an existing Home Assistant backup job at 02:30.
 
+**The nightly cron cannot drive Chrome.** Proven on the first real run
+(2026-08-26 02:48): cron fired on time, the wrapper ran, the skill was found
+and S3 read cleanly — but the Claude-in-Chrome tools were absent from the
+headless session, so nothing was extracted. `claude mcp list` shows only Slack,
+Calendar, Drive, Gmail and Playwright; `claude-in-chrome` is not an MCP server
+at all. The extension bridges to an interactive session over native messaging
+(see the `--chrome-native-host` process), which a `claude -p` run does not
+inherit. No allowlist can fix this — the tools do not exist there.
+
+The wrapper now exits 2 when a run records nothing, because that first run
+reported exit 0 while doing nothing, which is the worst possible outcome: it
+looks healthy in every log.
+
+The original note below still applies to interactive runs:
+
 The run needs Chrome open and logged in. If the machine is asleep the night is
 simply missed, which is harmless: the cursor in `state.json` means the next run
 resumes exactly where it stopped.
