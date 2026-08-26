@@ -1,14 +1,17 @@
 # Changelog
 
-Notable changes to instagetter. Format follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
-[Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+Versions are **generated at deploy time**, not carried in the sources: a merge
+into `production` is tagged `vYYYY.MM.DD.N`, where `N` counts that day's
+releases. Nothing needs bumping and nothing can be forgotten.
 
-A release is cut when a change reaches the `production` branch. The version
-here, the git tag, the GitHub release and the container image tag all refer to
-the same build.
+Each release's notes are assembled from the commits since the previous one,
+preceded by anything curated under Unreleased below. The full history lives on
+the [releases page](https://github.com/klaushofrichter/instagetter/releases);
+this file is where notes are written *before* a release, not an archive of them.
 
 ## [Unreleased]
+
+_Anything written here is included in the next release's notes._
 
 ## [1.0.0] - 2026-08-25
 
@@ -59,5 +62,6 @@ First production release: the gallery behind
   into `production`.
 - Container runs Node 24 LTS.
 
-[Unreleased]: https://github.com/klaushofrichter/instagetter/compare/v1.0.0...HEAD
 [1.0.0]: https://github.com/klaushofrichter/instagetter/releases/tag/v1.0.0
+
+_1.0.0 was the last hand-numbered release; everything after it is dated._

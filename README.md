@@ -244,24 +244,25 @@ prerequisites a deploy depends on.
 
 ### Releases
 
-Merging into `production` cuts a release. The version in `package.json`, the git
-tag, the GitHub release and the container image tag all name the same build.
+Merging into `production` cuts a release. The version is **generated at deploy
+time** as `vYYYY.MM.DD.N`, where `N` counts that day's releases — there is no
+version in the sources to bump or forget. Dates are Central, so an evening
+deploy is not filed under tomorrow.
 
 ```
-ghcr.io/klaushofrichter/instagetter:v1.0.0   the released build
-ghcr.io/klaushofrichter/instagetter:latest   whatever production runs
-ghcr.io/klaushofrichter/instagetter:main     newest build of main, not deployed
-ghcr.io/klaushofrichter/instagetter:<sha>    every build, by commit
+ghcr.io/klaushofrichter/instagetter:v2026.08.25.1   the released build
+ghcr.io/klaushofrichter/instagetter:latest          whatever production runs
+ghcr.io/klaushofrichter/instagetter:main            newest main build, not deployed
+ghcr.io/klaushofrichter/instagetter:<sha>           every build, by commit
 ```
 
 `latest` is published by the production deploy rather than by `main`, so pulling
 it gives what is actually deployed instead of an untested build.
 
-To release: bump `version` in `package.json`, add the matching section to
-`CHANGELOG.md`, and open the PR into `production`. After the rollout is verified
-the workflow tags the commit and creates the release, using that changelog
-section as the notes. If the version was not bumped the release step notices the
-tag already exists and skips it, so a redeploy is harmless.
+Release notes are assembled from the commits since the previous release,
+preceded by anything curated under Unreleased in `CHANGELOG.md`. The release is
+created only after the rollout has been verified, so a failed deploy produces no
+release.
 
 ## License
 
