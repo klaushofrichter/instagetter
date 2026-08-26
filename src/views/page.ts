@@ -268,7 +268,8 @@ export function renderPage(): string {
       responsive grid with a lightbox. The site itself never talks to Instagram.</p>
     <p class="about-nav">Navigate with swipes, taps or the cursor keys. Click a
       picture for fullscreen, and press <kbd>space</kbd> there to show its
-      details.</p>
+      details. <kbd>Esc</kbd> steps back one level: out of fullscreen, then out
+      of the picture, back to the grid.</p>
     <p class="about-updated" id="about-updated"></p>
     <p class="about-links">
       <a href="${PROFILE_URL}" target="_blank" rel="noopener noreferrer">@klaushofrichter</a>
