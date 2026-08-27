@@ -136,25 +136,35 @@ Two consequences worth keeping:
 
 ### Model and cost
 
-The nightly run uses `--model sonnet` (resolves to `claude-sonnet-5`). Measured
-from a real Opus run (session `bf6e4994`): 714k input-equivalent tokens and 36k
-output for twelve images, reported as $3.32. Re-priced on the same token mix,
-Sonnet is roughly 60% of that — 40% while its introductory pricing lasts — and
-Haiku 4.5 about 20%.
+The nightly run uses `--model opus`. Sonnet 5 was tried on 2026-08-27 and was
+**more** expensive, not less:
 
-Cost is not the interesting risk. This skill is full of traps that fail
-*quietly*: carousels needing `?img_index=`, blocked downloads reporting success,
-a loose selector picking up other posts' images, an "AI content" badge sitting
-where the location goes. The no-op guard catches a run that records nothing; it
-cannot catch a run that records twelve images with wrong captions. When changing
-model or effort, check the output rather than just the exit code.
+| Run | Time | Turns | cache_read | Cost |
+|---|---|---|---|---|
+| Opus 5, 2026-08-26 | 9.5 min | 67 | 4.89M | $3.32 |
+| Sonnet 5, 2026-08-27 | 20.7 min | 150 | 20.66M | $3.81 |
 
-Haiku 4.5 also has a 200K context window against 1M for the others. The Opus run
-averaged ~52K per turn, so it would probably fit, but a night of long carousels
-could exceed it mid-run.
+The estimate that predicted ~40% of Opus assumed the token mix was fixed and
+only the rates changed. It is not: Sonnet needed 150 turns against 67, and every
+extra turn in an agentic loop re-reads the whole cached context, so cache reads
+went 4.9M to 20.7M — 3.4x the input-equivalent tokens. The cheaper rate was
+swamped. That $3.81 was also at introductory pricing (ends 2026-08-31); at
+standard rates the same run models to roughly $5.72.
 
-`scripts/format-stream.py` logs the token totals per run, so the next comparison
-is measurement rather than estimate.
+**The lesson: for an agentic loop, cheaper per-token rates do not mean cheaper
+runs. Turn count drives cost, and turn count is model-dependent.** The Haiku
+estimate in the same table was built on the same bad assumption and should be
+treated as unknown until measured — a weaker model plausibly needs more turns
+still, and it has a 200K context window against 1M.
+
+Sonnet's output quality was fine: 16 slots including a 5-slide carousel
+completed in full, sensible captions and locations, no thumbnails. The risk
+worth watching turned out to be cost, not correctness — but the correctness risk
+is still real, because the no-op guard catches a run that records nothing, not
+one that records twelve images with wrong captions.
+
+`scripts/format-stream.py` logs the token totals and turn count per run, which
+is what made this measurable.
 
 Output streams as NDJSON through `scripts/format-stream.py`. Buffered output
 made a twelve-minute extraction look identical to a hang, and cost a run that
