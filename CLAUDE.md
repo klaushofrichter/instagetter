@@ -166,6 +166,12 @@ one that records twelve images with wrong captions.
 `scripts/format-stream.py` logs the token totals and turn count per run, which
 is what made this measurable.
 
+Next experiment (2026-08-28): Opus at `--effort low`. Lower effort is documented
+to produce fewer, more consolidated tool calls, which would cut turns and so
+cost — but less deliberation on a trap-laden task could equally cause retries
+and raise them. Deliberately no prediction: the number to compare is **turns**
+(Opus high: 67), then cost, then output quality.
+
 Output streams as NDJSON through `scripts/format-stream.py`. Buffered output
 made a twelve-minute extraction look identical to a hang, and cost a run that
 had already succeeded.

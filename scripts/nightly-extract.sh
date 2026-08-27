@@ -48,7 +48,11 @@ BEFORE=$(node scripts/state.js 2>/dev/null | python3 -c 'import json,sys;print(j
 # each extra turn re-reads the cached context, so cache reads went 4.9M -> 20.7M.
 # See CLAUDE.md — the token mix is model-dependent, so cheaper rates do not mean
 # cheaper runs for an agentic loop.
-timeout 3600 claude -p --chrome --model opus --output-format stream-json --verbose "/extract-instagram
+# --effort low is an experiment (2026-08-28). Turn count is what drives cost in
+# this loop, not the per-token rate, so the number to watch in the log is turns:
+# fewer, more consolidated tool calls would cut cost; more retries would raise
+# it. No prediction here — measure it.
+timeout 3600 claude -p --chrome --model opus --effort low --output-format stream-json --verbose "/extract-instagram
 
 Nightly run. Phase 1: check the top of the klaushofrichter profile for posts newer than what is already in S3, and extract any found. Phase 2: backfill 12 older posts starting from the backfillCursor in state.json, completing any carousel in full even if that exceeds 12. Skip videos and reels, recording each with scripts/state.js --skip. Verify every download on disk before staging. Upload to S3, move the cursor with scripts/state.js --set-cursor, record counts with scripts/state.js --record, then POST to https://insta.skylar.technology/api/refresh. Finish with a one-paragraph summary of what was added, or why nothing was." \
   --allowed-tools \
