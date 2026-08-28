@@ -136,26 +136,43 @@ Two consequences worth keeping:
 
 ### Model and cost
 
-The nightly run uses `--model opus`. Sonnet 5 was tried on 2026-08-27 and was
-**more** expensive, not less:
+The nightly run uses `--model opus` at **default effort**. Both alternatives
+tried so far were worse, and both were worse for the same reason:
 
-| Run | Time | Turns | cache_read | Cost |
-|---|---|---|---|---|
-| Opus 5, 2026-08-26 | 9.5 min | 67 | 4.89M | $3.32 |
-| Sonnet 5, 2026-08-27 | 20.7 min | 150 | 20.66M | $3.81 |
+| Run | Time | Turns | Cost |
+|---|---|---|---|
+| Opus 5, default, 2026-08-26 | 9.5 min | **67** | $3.32 |
+| Sonnet 5, 2026-08-27 | 20.7 min | 150 | $3.81 |
+| Opus 5, `--effort low`, 2026-08-28 | 12.0 min | 88 | $4.38 |
 
-The estimate that predicted ~40% of Opus assumed the token mix was fixed and
-only the rates changed. It is not: Sonnet needed 150 turns against 67, and every
-extra turn in an agentic loop re-reads the whole cached context, so cache reads
-went 4.9M to 20.7M — 3.4x the input-equivalent tokens. The cheaper rate was
-swamped. That $3.81 was also at introductory pricing (ends 2026-08-31); at
-standard rates the same run models to roughly $5.72.
+**The lesson: for an agentic loop, cheaper per-token rates and lower effort do
+not mean cheaper runs. Turn count drives consumption, and turn count is
+model- and effort-dependent.**
 
-**The lesson: for an agentic loop, cheaper per-token rates do not mean cheaper
-runs. Turn count drives cost, and turn count is model-dependent.** The Haiku
-estimate in the same table was built on the same bad assumption and should be
-treated as unknown until measured — a weaker model plausibly needs more turns
-still, and it has a 200K context window against 1M.
+Sonnet was predicted at ~40% of Opus and came in at 115%: 150 turns against 67,
+and every extra turn in an agentic loop re-reads the whole cached context.
+`--effort low` was then tried on the theory that fewer, more consolidated tool
+calls would cut turns. It did the opposite — 88 turns — so the run got more
+expensive, not less. The Haiku estimate from the original table rested on the
+same bad assumption and should be treated as **unknown until measured**; a
+weaker model plausibly needs more turns still, and it has a 200K context window
+against 1M.
+
+#### Reading those cost figures
+
+Two caveats, both learned by checking rather than assuming:
+
+- **They are not money billed.** The cron job exports no `ANTHROPIC_API_KEY`, so
+  it runs on the stored OAuth subscription credentials. `total_cost_usd` — which
+  `scripts/format-stream.py` passes through verbatim from the CLI result event,
+  it is not computed here — is a *notional* pay-as-you-go equivalent. The real
+  constraint is subscription usage, not dollars. The numbers are still valid for
+  comparing runs against each other, which is all they are used for.
+- **Only instrumented runs have token detail.** Token logging was added in
+  `91034ef`, for the Sonnet run. The 2026-08-26 Opus baseline predates it and
+  logged only turns, duration and cost — it has no `cache_read` figure, and an
+  earlier version of this table cited one that is not in the log. Do not quote
+  per-token detail for that run.
 
 Sonnet's output quality was fine: 16 slots including a 5-slide carousel
 completed in full, sensible captions and locations, no thumbnails. The risk
@@ -164,13 +181,7 @@ is still real, because the no-op guard catches a run that records nothing, not
 one that records twelve images with wrong captions.
 
 `scripts/format-stream.py` logs the token totals and turn count per run, which
-is what made this measurable.
-
-Next experiment (2026-08-28): Opus at `--effort low`. Lower effort is documented
-to produce fewer, more consolidated tool calls, which would cut turns and so
-cost — but less deliberation on a trap-laden task could equally cause retries
-and raise them. Deliberately no prediction: the number to compare is **turns**
-(Opus high: 67), then cost, then output quality.
+is what made this measurable. **Turns is the number to compare** (baseline: 67).
 
 Output streams as NDJSON through `scripts/format-stream.py`. Buffered output
 made a twelve-minute extraction look identical to a hang, and cost a run that
