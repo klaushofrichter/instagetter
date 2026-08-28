@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { promises as fs } from 'fs';
 import path from 'path';
-import { refresh, getItems, resetCache, readCached, isValidId, getProgress } from '../src/cache';
+import { refresh, getItems, resetCache, readCached, readOrFetch, isValidId, getProgress } from '../src/cache';
 import { setClient } from '../src/s3';
 import { installFakeS3, meta } from './fakeS3';
 
@@ -35,7 +35,7 @@ describe('refresh', () => {
     expect(await readCached('thumbs', 'ccc_1')).not.toBeNull();
   });
 
-  it('caps the cache at CACHE_LIMIT, keeping the newest by post date', async () => {
+  it('caps full images at CACHE_LIMIT but keeps every thumb and advertises all slots', async () => {
     const many = Array.from({ length: 5 }, (_, i) =>
       meta(`id${i}_1`, new Date(Date.UTC(2026, 0, i + 1)).toISOString()),
     );
@@ -45,9 +45,27 @@ describe('refresh', () => {
       installFakeS3(many);
       await refresh();
 
+      // The whole catalog is browsable, not just the cached window.
       const ids = getItems().map((m) => m.id);
-      expect(ids).toEqual(['id4_1', 'id3_1', 'id2_1']);
+      expect(ids).toEqual(['id4_1', 'id3_1', 'id2_1', 'id1_1', 'id0_1']);
+
+      // Full images: newest three on disk, older two evicted.
+      expect(await readCached('images', 'id2_1')).not.toBeNull();
       expect(await readCached('images', 'id1_1')).toBeNull();
+      expect(await readCached('images', 'id0_1')).toBeNull();
+
+      // Thumbs: all five, so grid pagination never waits on S3.
+      for (const m of many) {
+        expect(await readCached('thumbs', m.id)).not.toBeNull();
+      }
+
+      // An evicted image is still served, transparently, from S3 -- and is not
+      // written back to disk, or eviction by post date would not hold.
+      expect(await readOrFetch('images', 'id0_1')).not.toBeNull();
+      expect(await readCached('images', 'id0_1')).toBeNull();
+
+      // An id outside the catalog must not cause an S3 GET at all.
+      expect(await readOrFetch('images', 'nosuch_1')).toBeNull();
     } finally {
       if (original === undefined) delete process.env.CACHE_LIMIT;
       else process.env.CACHE_LIMIT = original;

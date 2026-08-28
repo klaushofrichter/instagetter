@@ -35,16 +35,44 @@ because the per-IP rate limits sit behind kourier/traefik.
   dependency-free and unauthenticated.
 - `src/routes/api.ts` — token-gated `/api/*` placeholder.
 - `src/routes/index.ts` — `/`, `/robots.txt`, favicon.
-- `src/cache.ts` — the whole state layer. Pulls `index.json` from S3, downloads
-  what is missing, evicts anything outside the newest `maxCached()` **by post
-  date, not by last access**. Concurrent refreshes share one in-flight promise
-  rather than racing on the cache directory; a single bad object is skipped
-  rather than aborting the run. `resetCache()` exists for test isolation.
+- `src/cache.ts` — the whole state layer. Pulls `index.json` from S3 and caches
+  what is missing. Concurrent refreshes share one in-flight promise rather than
+  racing on the cache directory; a single bad object is skipped rather than
+  aborting the run. `resetCache()` exists for test isolation. See **Two tiers**
+  below — the disk cache and what the gallery advertises are not the same set.
 - `src/s3.ts` — thin S3 wrapper. `setClient()` is the test seam; the suite never
   touches the network (see `test/fakeS3.ts`).
 - `src/views/page.ts` — the entire UI as one HTML string, no templating engine.
   Client JS deliberately avoids template literals so it can live inside a TS
   template literal without escaping traps.
+
+### Two tiers: the catalog and the disk cache
+
+The gallery advertises **every** slot in `index.json`; the disk holds less than
+that. These were one thing originally, and separating them is what let the
+archive grow past the cache size without growing the cache.
+
+- **Catalog** — the full sorted index, metadata only, in memory. This is what
+  `/api/images` returns, so pagination reaches the whole archive.
+- **Thumbnails** — *all* of them on disk. At ~76KB against ~327KB for a full
+  image, the entire thumb set is ~74MB even at the `S3_KEEP=999` ceiling, so
+  caching the lot is cheap and grid pagination never waits on S3.
+- **Full images** — only the newest `maxCached()` (99), evicted **by post date,
+  not by last access**, so a frequently viewed old image still ages out.
+
+`readOrFetch()` serves an out-of-window full image straight from S3. It
+deliberately **does not write it to disk**: persisting on-demand fetches would
+break eviction-by-date and let the cache grow without bound until the next
+refresh. It also refuses ids absent from the catalog, so an arbitrary id cannot
+make the service issue S3 GETs.
+
+The cost of that fallback is latency, not money. Measured warm from the cluster
+to `us-east-1`: **590–755ms** for a ~327KB image, once per image per browser
+(`Cache-Control: immutable` covers repeats). Egress for the whole 999-slot
+archive is ~400MB — about four cents, and inside the 100GB/month free tier.
+What actually changes is the abuse surface: before, a client could only ever
+pull the 99 local files: bounded and free. `browseRateLimit` is now the thing
+holding that line.
 
 ### Why index.json
 
@@ -59,6 +87,17 @@ whose bytes fail to download rather than failing the refresh.
 client ignoring the UI still cannot hammer S3. Browsing limits
 (`browseRateLimit.ts`) are deliberately generous: one grid page pulls nine
 thumbnails, so a tight limit would throttle normal viewing.
+
+That generosity stopped being safe once a request could reach S3. 600/min of
+~327KB archive images is ~196MB/min of egress per IP, so
+`archiveRateLimit.ts` adds a second budget (default 120/min per IP) that counts
+**only full images not already on disk**. It decides with the synchronous
+`isLocalImage()` before the handler runs, so serving a cached image is never
+counted and paging through the newest 99 is unaffected at any speed. 120/min
+sits above realistic browsing -- the client's own 334ms step floor caps a held
+arrow key near 180/min -- while bounding egress to ~39MB/min per IP. The per-IP
+map is pruned above 1000 entries, since the key space on a public endpoint is
+every IP that ever asks.
 
 ## CI/CD
 
@@ -115,6 +154,77 @@ do nothing.
 - `flock` prevents overlapping runs; logs land in `logs/` (gitignored) and are
   pruned after a fortnight.
 - It sits eighteen minutes after an existing Home Assistant backup job at 02:30.
+
+**The cron run needs `--chrome`.** Without it the Claude-in-Chrome tools are
+simply absent and the run does nothing. `claude mcp list` does not show
+`claude-in-chrome` — it is not an MCP server, but the extension bridging over
+native messaging (see the `--chrome-native-host` process) — which made it look
+as though a `claude -p` run could never reach the browser. It can: `claude -p
+--chrome` exposes all of the browser tools. The first cron run (2026-08-26
+02:48) failed for exactly this reason, fired on time and extracted nothing.
+
+Two consequences worth keeping:
+
+- The wrapper exits 2 when a run records nothing, because that first run
+  reported exit 0 while doing nothing — the worst outcome, since it looks
+  healthy in every log.
+- `select_browser` and `list_connected_browsers` are in the allowlist. A run
+  without them cannot pin the local Linux browser and takes whichever is
+  default; with a macOS browser also connected that is luck, not choice, and an
+  unlucky night drives a logged-out profile.
+
+### Model and cost
+
+The nightly run uses `--model opus` at **default effort**. Both alternatives
+tried so far were worse, and both were worse for the same reason:
+
+| Run | Time | Turns | Cost |
+|---|---|---|---|
+| Opus 5, default, 2026-08-26 | 9.5 min | **67** | $3.32 |
+| Sonnet 5, 2026-08-27 | 20.7 min | 150 | $3.81 |
+| Opus 5, `--effort low`, 2026-08-28 | 12.0 min | 88 | $4.38 |
+
+**The lesson: for an agentic loop, cheaper per-token rates and lower effort do
+not mean cheaper runs. Turn count drives consumption, and turn count is
+model- and effort-dependent.**
+
+Sonnet was predicted at ~40% of Opus and came in at 115%: 150 turns against 67,
+and every extra turn in an agentic loop re-reads the whole cached context.
+`--effort low` was then tried on the theory that fewer, more consolidated tool
+calls would cut turns. It did the opposite — 88 turns — so the run got more
+expensive, not less. The Haiku estimate from the original table rested on the
+same bad assumption and should be treated as **unknown until measured**; a
+weaker model plausibly needs more turns still, and it has a 200K context window
+against 1M.
+
+#### Reading those cost figures
+
+Two caveats, both learned by checking rather than assuming:
+
+- **They are not money billed.** The cron job exports no `ANTHROPIC_API_KEY`, so
+  it runs on the stored OAuth subscription credentials. `total_cost_usd` — which
+  `scripts/format-stream.py` passes through verbatim from the CLI result event,
+  it is not computed here — is a *notional* pay-as-you-go equivalent. The real
+  constraint is subscription usage, not dollars. The numbers are still valid for
+  comparing runs against each other, which is all they are used for.
+- **Only instrumented runs have token detail.** Token logging was added in
+  `91034ef`, for the Sonnet run. The 2026-08-26 Opus baseline predates it and
+  logged only turns, duration and cost — it has no `cache_read` figure, and an
+  earlier version of this table cited one that is not in the log. Do not quote
+  per-token detail for that run.
+
+Sonnet's output quality was fine: 16 slots including a 5-slide carousel
+completed in full, sensible captions and locations, no thumbnails. The risk
+worth watching turned out to be cost, not correctness — but the correctness risk
+is still real, because the no-op guard catches a run that records nothing, not
+one that records twelve images with wrong captions.
+
+`scripts/format-stream.py` logs the token totals and turn count per run, which
+is what made this measurable. **Turns is the number to compare** (baseline: 67).
+
+Output streams as NDJSON through `scripts/format-stream.py`. Buffered output
+made a twelve-minute extraction look identical to a hang, and cost a run that
+had already succeeded.
 
 The run needs Chrome open and logged in. If the machine is asleep the night is
 simply missed, which is harmless: the cursor in `state.json` means the next run

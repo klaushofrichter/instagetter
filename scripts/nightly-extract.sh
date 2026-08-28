@@ -34,13 +34,30 @@ set -a; . "$PROJECT/.env"; set +a
 
 echo "=== $(date -Is) starting nightly extraction ===" >> "$LOG"
 
-timeout 3600 claude -p "/extract-instagram
+# Remember where the state stood, so a run that changed nothing can be told
+# apart from one that worked. Exit 0 with an empty result is worse than a
+# failure: it looks fine in every log and metric.
+BEFORE=$(node scripts/state.js 2>/dev/null | python3 -c 'import json,sys;print(json.load(sys.stdin).get("lastRun",""))' 2>/dev/null || true)
+
+# --chrome is what makes the Claude-in-Chrome tools exist in a headless run.
+# Without it the browser tools are simply absent and the run does nothing.
+# stream-json plus the formatter means the log narrates the run live. Buffered
+# output made a twelve-minute extraction indistinguishable from a hang.
+# Opus, measured rather than assumed. Sonnet 5 was tried on 2026-08-27 and cost
+# MORE ($3.81 vs $3.32) despite lower rates: it needed 150 turns against 67, and
+# each extra turn re-reads the cached context. See CLAUDE.md — the token mix is
+# model-dependent, so cheaper rates do not mean cheaper runs for an agentic loop.
+# Default effort, deliberately: --effort low was measured on 2026-08-28 and made
+# it worse, 88 turns against 67. Turn count is what drives consumption here, so
+# the number to watch in the log is turns.
+timeout 3600 claude -p --chrome --model opus --output-format stream-json --verbose "/extract-instagram
 
 Nightly run. Phase 1: check the top of the klaushofrichter profile for posts newer than what is already in S3, and extract any found. Phase 2: backfill 12 older posts starting from the backfillCursor in state.json, completing any carousel in full even if that exceeds 12. Skip videos and reels, recording each with scripts/state.js --skip. Verify every download on disk before staging. Upload to S3, move the cursor with scripts/state.js --set-cursor, record counts with scripts/state.js --record, then POST to https://insta.skylar.technology/api/refresh. Finish with a one-paragraph summary of what was added, or why nothing was." \
   --allowed-tools \
     "Bash" \
     "Read" \
     "Write" \
+    "ToolSearch" \
     "mcp__claude-in-chrome__navigate" \
     "mcp__claude-in-chrome__javascript_tool" \
     "mcp__claude-in-chrome__computer" \
@@ -48,9 +65,20 @@ Nightly run. Phase 1: check the top of the klaushofrichter profile for posts new
     "mcp__claude-in-chrome__tabs_create_mcp" \
     "mcp__claude-in-chrome__tabs_close_mcp" \
     "mcp__claude-in-chrome__read_console_messages" \
-  >> "$LOG" 2>&1
+    "mcp__claude-in-chrome__select_browser" \
+    "mcp__claude-in-chrome__list_connected_browsers" \
+  2>&1 | python3 "$PROJECT/scripts/format-stream.py" >> "$LOG"
 
-STATUS=$?
+# The claude exit code, not the formatter's.
+STATUS=${PIPESTATUS[0]}
+
+AFTER=$(node scripts/state.js 2>/dev/null | python3 -c 'import json,sys;print(json.load(sys.stdin).get("lastRun",""))' 2>/dev/null || true)
+if [ "$STATUS" -eq 0 ] && [ "$BEFORE" = "$AFTER" ]; then
+  echo "NO-OP: the run reported success but recorded nothing — state.json is unchanged." >> "$LOG"
+  echo "       Nothing was extracted. See the transcript above for why." >> "$LOG"
+  STATUS=2
+fi
+
 echo "=== $(date -Is) finished, exit $STATUS ===" >> "$LOG"
 
 # Keep a fortnight of logs.
