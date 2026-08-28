@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { getItems, getLastRefresh, readCached, refresh, maxCached, isValidId, getProgress } from '../cache';
+import { getItems, getLastRefresh, readOrFetch, refresh, maxCached, isValidId, getProgress } from '../cache';
 import { refreshRateLimit } from '../middleware/refreshRateLimit';
 import { createBrowseRateLimit } from '../middleware/browseRateLimit';
 
@@ -32,9 +32,9 @@ function serve(kind: 'images' | 'thumbs') {
       res.status(400).json({ error: 'bad id' });
       return;
     }
-    const bytes = await readCached(kind, id);
+    const bytes = await readOrFetch(kind, id);
     if (!bytes) {
-      res.status(404).json({ error: 'not cached' });
+      res.status(404).json({ error: 'not found' });
       return;
     }
     // Slot ids are immutable, so the bytes never change under a given URL.
@@ -52,9 +52,9 @@ galleryRouter.get('/download/:id.jpg', browseLimit, async (req: Request, res: Re
     res.status(400).json({ error: 'bad id' });
     return;
   }
-  const bytes = await readCached('images', id);
+  const bytes = await readOrFetch('images', id);
   if (!bytes) {
-    res.status(404).json({ error: 'not cached' });
+    res.status(404).json({ error: 'not found' });
     return;
   }
   res.set('Content-Disposition', `attachment; filename="instagram_${id}.jpg"`);

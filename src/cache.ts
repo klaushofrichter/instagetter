@@ -3,7 +3,12 @@ import path from 'path';
 import { ImageMeta, sortNewestFirst } from './types';
 import { fetchIndex, fetchImage, fetchThumb } from './s3';
 
-/** Read per call so the limit is configurable at runtime and testable. */
+/**
+ * How many *full images* are held on local disk. Thumbnails are not subject to
+ * this: they are ~76KB against ~327KB, so the whole thumbnail set is cached
+ * regardless of age and grid pagination never waits on S3. Read per call so the
+ * limit is configurable at runtime and testable.
+ */
 export function maxCached(): number {
   return Number(process.env.CACHE_LIMIT) || 99;
 }
@@ -13,6 +18,11 @@ function cacheDir(): string {
 }
 
 let items: ImageMeta[] = [];
+/**
+ * Every slot id in index.json, not just the cached window. Guards the S3
+ * fallback so an arbitrary id cannot be used to make the service issue GETs.
+ */
+let catalogIds = new Set<string>();
 let progress: Progress = { loading: false, done: 0, total: 0 };
 let lastRefresh: string | null = null;
 let refreshing: Promise<RefreshResult> | null = null;
@@ -47,6 +57,7 @@ export function getProgress(): Progress {
 /** Test isolation — mirrors resetReading() in steps-service. */
 export function resetCache(): void {
   items = [];
+  catalogIds = new Set();
   lastRefresh = null;
   refreshing = null;
   progress = { loading: false, done: 0, total: 0 };
@@ -75,6 +86,36 @@ export async function readCached(kind: 'images' | 'thumbs', id: string): Promise
   try {
     return await fs.readFile(filePath(kind, id));
   } catch {
+    return null;
+  }
+}
+
+/**
+ * Serve a slot, falling back to S3 for full images outside the cached window.
+ *
+ * The fallback deliberately does **not** write to disk. Eviction keeps the
+ * newest maxCached() by post date; persisting an on-demand fetch would break
+ * that invariant and let the cache grow without bound until the next refresh.
+ * Thumbnails are different — every thumb belongs on disk, so a thumb fetched
+ * here is worth keeping.
+ */
+export async function readOrFetch(
+  kind: 'images' | 'thumbs',
+  id: string,
+): Promise<Buffer | null> {
+  if (!isValidId(id)) return null;
+  const local = await readCached(kind, id);
+  if (local) return local;
+  if (!catalogIds.has(id)) return null; // not a slot we know about — don't probe S3
+  try {
+    const bytes = kind === 'thumbs' ? await fetchThumb(id) : await fetchImage(id);
+    if (kind === 'thumbs') {
+      await ensureDirs();
+      await fs.writeFile(filePath('thumbs', id), bytes);
+    }
+    return bytes;
+  } catch (err) {
+    console.error(`readOrFetch: ${kind}/${id}:`, (err as Error).message);
     return null;
   }
 }
@@ -111,34 +152,46 @@ async function doRefresh(): Promise<RefreshResult> {
 
 async function runRefresh(): Promise<RefreshResult> {
   await ensureDirs();
-  const index = sortNewestFirst(await fetchIndex());
-  const keep = index.slice(0, maxCached());
-  const keepIds = new Set(keep.map((m) => m.id));
-  progress = { loading: true, done: 0, total: keep.length };
+  const catalog = sortNewestFirst(await fetchIndex());
+  catalogIds = new Set(catalog.map((m) => m.id));
+
+  // Full images are held for the newest window only; thumbs for everything.
+  const keepImages = catalog.slice(0, maxCached());
+  const keepImageIds = new Set(keepImages.map((m) => m.id));
+  progress = { loading: true, done: 0, total: catalog.length };
 
   let added = 0;
-  for (const meta of keep) {
+  const broken = new Set<string>();
+
+  for (const meta of catalog) {
+    const wantImage = keepImageIds.has(meta.id);
     const haveThumb = await readCached('thumbs', meta.id);
-    const haveImage = await readCached('images', meta.id);
+    const haveImage = wantImage ? await readCached('images', meta.id) : true;
     if (haveThumb && haveImage) {
       progress = { ...progress, done: progress.done + 1 };
       continue;
     }
     try {
-      const [thumb, full] = await Promise.all([fetchThumb(meta.id), fetchImage(meta.id)]);
-      await fs.writeFile(filePath('thumbs', meta.id), thumb);
-      await fs.writeFile(filePath('images', meta.id), full);
+      if (!haveThumb) {
+        await fs.writeFile(filePath('thumbs', meta.id), await fetchThumb(meta.id));
+      }
+      if (!haveImage) {
+        await fs.writeFile(filePath('images', meta.id), await fetchImage(meta.id));
+      }
       added += 1;
-      progress = { ...progress, done: progress.done + 1 };
     } catch (err) {
       // One bad object must not abort the whole refresh.
       console.error(`refresh: skipping ${meta.id}:`, (err as Error).message);
-      progress = { ...progress, done: progress.done + 1 };
+      broken.add(meta.id);
     }
+    progress = { ...progress, done: progress.done + 1 };
   }
 
+  // Thumbs age out only when they leave index.json; images when they leave the
+  // newest window. Both are by post date, never by last access.
   let evicted = 0;
   for (const kind of ['images', 'thumbs'] as const) {
+    const keepIds = kind === 'images' ? keepImageIds : catalogIds;
     let entries: string[] = [];
     try {
       entries = await fs.readdir(path.join(cacheDir(), kind));
@@ -153,12 +206,10 @@ async function runRefresh(): Promise<RefreshResult> {
     }
   }
 
-  // Only advertise slots whose bytes actually made it into the cache.
-  const usable: ImageMeta[] = [];
-  for (const meta of keep) {
-    if (await readCached('thumbs', meta.id)) usable.push(meta);
-  }
-  items = usable;
+  // Advertise the whole catalog, minus any slot whose bytes would not come down
+  // -- a grid entry that cannot be opened is worse than an absent one. Full
+  // images beyond the window are served from S3 on demand by readOrFetch().
+  items = catalog.filter((m) => !broken.has(m.id));
   lastRefresh = new Date().toISOString();
   return { total: items.length, added, evicted, skipped: false, at: lastRefresh };
 }

@@ -374,7 +374,7 @@ export function renderPage(): string {
       return;
     }
     if (!images.length) {
-      el.innerHTML = '<div class="empty">No images cached yet.<br>Press <strong>Refresh</strong> to pull the latest from S3.</div>';
+      el.innerHTML = '<div class="empty">No images yet.<br>Press <strong>Refresh</strong> to pull the latest from S3.</div>';
       return;
     }
     var pages = Math.ceil(images.length / PER_PAGE);
@@ -787,7 +787,7 @@ export function renderPage(): string {
           progress = d.progress || progress;
           render();
           lastRefreshAt = d.lastRefresh || lastRefreshAt;
-          setStatus(d.added + ' new, ' + images.length + ' cached');
+          setStatus(d.added + ' new, ' + images.length + ' images');
         }
       })
       .catch(function () { setStatus('refresh failed'); })

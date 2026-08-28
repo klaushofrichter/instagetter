@@ -35,16 +35,44 @@ because the per-IP rate limits sit behind kourier/traefik.
   dependency-free and unauthenticated.
 - `src/routes/api.ts` — token-gated `/api/*` placeholder.
 - `src/routes/index.ts` — `/`, `/robots.txt`, favicon.
-- `src/cache.ts` — the whole state layer. Pulls `index.json` from S3, downloads
-  what is missing, evicts anything outside the newest `maxCached()` **by post
-  date, not by last access**. Concurrent refreshes share one in-flight promise
-  rather than racing on the cache directory; a single bad object is skipped
-  rather than aborting the run. `resetCache()` exists for test isolation.
+- `src/cache.ts` — the whole state layer. Pulls `index.json` from S3 and caches
+  what is missing. Concurrent refreshes share one in-flight promise rather than
+  racing on the cache directory; a single bad object is skipped rather than
+  aborting the run. `resetCache()` exists for test isolation. See **Two tiers**
+  below — the disk cache and what the gallery advertises are not the same set.
 - `src/s3.ts` — thin S3 wrapper. `setClient()` is the test seam; the suite never
   touches the network (see `test/fakeS3.ts`).
 - `src/views/page.ts` — the entire UI as one HTML string, no templating engine.
   Client JS deliberately avoids template literals so it can live inside a TS
   template literal without escaping traps.
+
+### Two tiers: the catalog and the disk cache
+
+The gallery advertises **every** slot in `index.json`; the disk holds less than
+that. These were one thing originally, and separating them is what let the
+archive grow past the cache size without growing the cache.
+
+- **Catalog** — the full sorted index, metadata only, in memory. This is what
+  `/api/images` returns, so pagination reaches the whole archive.
+- **Thumbnails** — *all* of them on disk. At ~76KB against ~327KB for a full
+  image, the entire thumb set is ~74MB even at the `S3_KEEP=999` ceiling, so
+  caching the lot is cheap and grid pagination never waits on S3.
+- **Full images** — only the newest `maxCached()` (99), evicted **by post date,
+  not by last access**, so a frequently viewed old image still ages out.
+
+`readOrFetch()` serves an out-of-window full image straight from S3. It
+deliberately **does not write it to disk**: persisting on-demand fetches would
+break eviction-by-date and let the cache grow without bound until the next
+refresh. It also refuses ids absent from the catalog, so an arbitrary id cannot
+make the service issue S3 GETs.
+
+The cost of that fallback is latency, not money. Measured warm from the cluster
+to `us-east-1`: **590–755ms** for a ~327KB image, once per image per browser
+(`Cache-Control: immutable` covers repeats). Egress for the whole 999-slot
+archive is ~400MB — about four cents, and inside the 100GB/month free tier.
+What actually changes is the abuse surface: before, a client could only ever
+pull the 99 local files: bounded and free. `browseRateLimit` is now the thing
+holding that line.
 
 ### Why index.json
 
