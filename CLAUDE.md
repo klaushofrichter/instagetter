@@ -88,6 +88,17 @@ client ignoring the UI still cannot hammer S3. Browsing limits
 (`browseRateLimit.ts`) are deliberately generous: one grid page pulls nine
 thumbnails, so a tight limit would throttle normal viewing.
 
+That generosity stopped being safe once a request could reach S3. 600/min of
+~327KB archive images is ~196MB/min of egress per IP, so
+`archiveRateLimit.ts` adds a second budget (default 120/min per IP) that counts
+**only full images not already on disk**. It decides with the synchronous
+`isLocalImage()` before the handler runs, so serving a cached image is never
+counted and paging through the newest 99 is unaffected at any speed. 120/min
+sits above realistic browsing -- the client's own 334ms step floor caps a held
+arrow key near 180/min -- while bounding egress to ~39MB/min per IP. The per-IP
+map is pruned above 1000 entries, since the key space on a public endpoint is
+every IP that ever asks.
+
 ## CI/CD
 
 - `build-push.yml` — push to `main`: tests, then publish

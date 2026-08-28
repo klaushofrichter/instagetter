@@ -23,6 +23,12 @@ let items: ImageMeta[] = [];
  * fallback so an arbitrary id cannot be used to make the service issue GETs.
  */
 let catalogIds = new Set<string>();
+/**
+ * Full-image ids actually present on disk after the last refresh. Read from the
+ * directory rather than inferred, and kept synchronous so rate-limiting
+ * middleware can decide *before* the handler whether a request will reach S3.
+ */
+let localImageIds = new Set<string>();
 let progress: Progress = { loading: false, done: 0, total: 0 };
 let lastRefresh: string | null = null;
 let refreshing: Promise<RefreshResult> | null = null;
@@ -42,6 +48,18 @@ export interface RefreshResult {
   at: string;
 }
 
+/**
+ * True when a full image is on local disk, so serving it costs nothing. False
+ * means the request would fall through to S3 -- which is what gets rate limited.
+ */
+export function isLocalImage(id: string): boolean {
+  return localImageIds.has(id);
+}
+
+export function isKnownSlot(id: string): boolean {
+  return catalogIds.has(id);
+}
+
 export function getItems(): ImageMeta[] {
   return items;
 }
@@ -58,6 +76,7 @@ export function getProgress(): Progress {
 export function resetCache(): void {
   items = [];
   catalogIds = new Set();
+  localImageIds = new Set();
   lastRefresh = null;
   refreshing = null;
   progress = { loading: false, done: 0, total: 0 };
@@ -204,6 +223,13 @@ async function runRefresh(): Promise<RefreshResult> {
       await fs.rm(path.join(cacheDir(), kind, entry), { force: true });
       if (kind === 'images') evicted += 1;
     }
+  }
+
+  try {
+    const onDisk = await fs.readdir(path.join(cacheDir(), 'images'));
+    localImageIds = new Set(onDisk.map((e) => e.replace(/\.jpg$/, '')));
+  } catch {
+    localImageIds = new Set();
   }
 
   // Advertise the whole catalog, minus any slot whose bytes would not come down

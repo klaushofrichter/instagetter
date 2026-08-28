@@ -13,6 +13,16 @@ this file is where notes are written *before* a release, not an archive of them.
      notes. Keep prose out of it unless you mean it to be published. -->
 ## [Unreleased]
 
+### Added
+
+- The gallery now browses the **whole** S3 archive, not just the locally cached
+  window. Every thumbnail is held on disk, so grid pagination stays instant at
+  any depth; full images outside the newest `CACHE_LIMIT` are fetched from S3 on
+  demand, adding roughly half a second the first time one is opened.
+- `ARCHIVE_RATE_LIMIT` (default 120/min per IP), a second rate budget counting
+  only full images that are not on disk. Cached images are never counted, so
+  ordinary browsing is unaffected.
+
 ## [1.0.0] - 2026-08-25
 
 First production release: the gallery behind

@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { getItems, getLastRefresh, readOrFetch, refresh, maxCached, isValidId, getProgress } from '../cache';
 import { refreshRateLimit } from '../middleware/refreshRateLimit';
 import { createBrowseRateLimit } from '../middleware/browseRateLimit';
+import { archiveRateLimit } from '../middleware/archiveRateLimit';
 
 export const galleryRouter = Router();
 
@@ -44,9 +45,10 @@ function serve(kind: 'images' | 'thumbs') {
 }
 
 galleryRouter.get('/thumb/:id.jpg', browseLimit, serve('thumbs'));
-galleryRouter.get('/image/:id.jpg', browseLimit, serve('images'));
+// Archive images reach S3; the extra limiter skips anything already on disk.
+galleryRouter.get('/image/:id.jpg', browseLimit, archiveRateLimit, serve('images'));
 
-galleryRouter.get('/download/:id.jpg', browseLimit, async (req: Request, res: Response) => {
+galleryRouter.get('/download/:id.jpg', browseLimit, archiveRateLimit, async (req: Request, res: Response) => {
   const id = req.params.id;
   if (!isValidId(id)) {
     res.status(400).json({ error: 'bad id' });
