@@ -433,27 +433,23 @@ export function renderPage(): string {
   // it is blanked until its own bytes are ready.
   var loadToken = 0;
   var waitTimer = null;
+  var fetchTimer = null;
   var preloadTimer = null;
+  var lastShowAt = 0;
   var preloaded = [];
+  // Above the 334ms navigation floor, so consecutive steps count as scrubbing.
+  var RAPID_MS = 500;
+  var SETTLE_MS = 260;
 
   function imageUrl(m) {
     return '/image/' + encodeURIComponent(m.id) + '.jpg';
   }
 
-  function showImage(m) {
+  function startLoad(m, token) {
+    if (token !== loadToken) return;
     var img = $('full');
     var wait = $('wait');
     var url = imageUrl(m);
-    // Every load carries a token. Stepping quickly through the archive can
-    // leave several requests in flight, and they need not return in order --
-    // without this, a slow earlier image would overwrite a later one.
-    var token = ++loadToken;
-
-    img.alt = m.caption || 'Instagram image';
-    img.classList.add('pending');
-    clearTimeout(waitTimer);
-    wait.className = 'wait';
-    wait.textContent = 'loading\u2026';
 
     // A cached image decodes in a few milliseconds, and a spinner that flashes
     // for one frame reads as a glitch. Only say anything if the wait is real.
@@ -473,10 +469,43 @@ export function renderPage(): string {
     probe.onerror = function () {
       if (token !== loadToken) return;
       clearTimeout(waitTimer);
-      wait.textContent = 'image unavailable';
+      // Most likely cause is the server's archive budget, which refills, so
+      // do not claim the image is gone.
+      wait.textContent = 'could not load \u2014 try again in a moment';
       wait.classList.add('on');
     };
     probe.src = url;
+  }
+
+  function showImage(m) {
+    var img = $('full');
+    var wait = $('wait');
+    // Every load carries a token. Stepping quickly through the archive can
+    // leave several requests in flight, and they need not return in order --
+    // without this, a slow earlier image would overwrite a later one.
+    var token = ++loadToken;
+
+    img.alt = m.caption || 'Instagram image';
+    img.classList.add('pending');
+    clearTimeout(waitTimer);
+    clearTimeout(fetchTimer);
+    wait.className = 'wait';
+    wait.textContent = 'loading\u2026';
+
+    // Leading edge, then debounce. A deliberate single step loads at once, so
+    // the common case gains no latency. Held keys scrub without fetching
+    // anything: the reader cannot see images going past at three a second, and
+    // fetching them would spend the server's archive budget -- which the UI can
+    // otherwise outrun, 180/min against a 120/min limit -- on nothing.
+    var now = Date.now();
+    var scrubbing = now - lastShowAt < RAPID_MS;
+    lastShowAt = now;
+
+    if (scrubbing) {
+      fetchTimer = setTimeout(function () { startLoad(m, token); }, SETTLE_MS);
+    } else {
+      startLoad(m, token);
+    }
   }
 
   // Fetch the neighbours so a settled reader steps instantly, but only after a

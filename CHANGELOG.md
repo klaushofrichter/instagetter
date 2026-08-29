@@ -28,6 +28,9 @@ this file is where notes are written *before* a release, not an archive of them.
   window. Every thumbnail is held on disk, so grid pagination stays instant at
   any depth; full images outside the newest `CACHE_LIMIT` are fetched from S3 on
   demand, adding roughly half a second the first time one is opened.
+- Holding an arrow key now scrubs through the archive without fetching the
+  full-size images as they fly past, so browsing cannot exhaust the server's
+  own archive rate budget. The image loads as soon as you stop.
 - Neighbouring images are prefetched after a short pause, so a settled reader
   steps through the archive instantly. Holding a key skips the prefetch rather
   than tripling the request rate.

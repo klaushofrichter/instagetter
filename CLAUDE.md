@@ -99,6 +99,20 @@ arrow key near 180/min -- while bounding egress to ~39MB/min per IP. The per-IP
 map is pruned above 1000 entries, since the key space on a public endpoint is
 every IP that ever asks.
 
+The budget is **below what the UI itself can generate** -- the 334ms navigation
+floor allows 180/min against the 120/min limit -- so the client must not spend
+it on images nobody looks at. `showImage()` therefore loads on the leading edge
+and then debounces: a deliberate single step fetches at once, but steps
+arriving inside 500ms of each other defer the fetch until the reader stops.
+Holding an arrow key scrubs through the metadata and fetches nothing. Raising
+the server budget instead would have been the wrong fix: it raises the ceiling
+for a hostile client just as much, and 200/min of ~327KB images is ~65MB/min
+per IP sustained.
+
+Note when measuring this in a browser: Chrome clamps timers to 1000ms in a
+hidden tab, so a scripted `setInterval` "scrub" silently runs at 1/s and takes
+the immediate path. Use a synchronous busy-wait to get real spacing.
+
 ## CI/CD
 
 - `build-push.yml` — push to `main`: tests, then publish
