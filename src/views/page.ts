@@ -149,7 +149,22 @@ export function renderPage(): string {
     position: absolute; inset: 0;
     width: 100%; height: 100%;
     object-fit: contain; display: block;
+    transition: opacity 120ms ease;
   }
+  /* An <img> keeps painting its previous bitmap until the new one decodes.
+     That was invisible while every image came off local disk in ~3ms; an
+     archive image fetched from S3 takes closer to a second, so the old picture
+     sat under the new caption. Hiding the element uncovers the stage's own
+     background, which is already theme-aware -- no separate light/dark
+     stand-in needed. */
+  .stage img.pending { opacity: 0; }
+  /* Announced only if the wait is real: see the delay in showImage(). */
+  .wait {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    font-size: 0.85rem; color: var(--muted); letter-spacing: 0.04em;
+    opacity: 0; transition: opacity 160ms ease; pointer-events: none;
+  }
+  .wait.on { opacity: 1; }
   .nav {
     position: absolute; top: 50%; transform: translateY(-50%);
     width: 2.6rem; height: 2.6rem; border-radius: 50%; display: grid; place-items: center;
@@ -307,6 +322,7 @@ export function renderPage(): string {
       <button class="nav prev" id="prev" aria-label="Previous image">&#8249;</button>
       <img id="full" alt="" title="Click for fullscreen">
       <button class="nav next" id="next" aria-label="Next image">&#8250;</button>
+      <div id="wait" class="wait"></div>
       <div id="fsmeta" class="fs-meta"></div>
       <button id="fsclose" class="icon-btn fs-close" title="Exit fullscreen (Esc)" aria-label="Exit fullscreen">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
@@ -410,12 +426,113 @@ export function renderPage(): string {
     syncUrl();
   }
 
+  // Loading the picture is decoupled from rendering the metadata. The metadata
+  // is correct the instant the key is pressed and is shown immediately: delaying
+  // it would make every step feel unresponsive, and would misreport which image
+  // you are on while the counter caught up. Instead the *image* stops lying --
+  // it is blanked until its own bytes are ready.
+  var loadToken = 0;
+  var waitTimer = null;
+  var fetchTimer = null;
+  var preloadTimer = null;
+  var lastShowAt = 0;
+  var preloaded = [];
+  // Above the 334ms navigation floor, so consecutive steps count as scrubbing.
+  var RAPID_MS = 500;
+  var SETTLE_MS = 260;
+
+  function imageUrl(m) {
+    return '/image/' + encodeURIComponent(m.id) + '.jpg';
+  }
+
+  function startLoad(m, token) {
+    if (token !== loadToken) return;
+    var img = $('full');
+    var wait = $('wait');
+    var url = imageUrl(m);
+
+    // A cached image decodes in a few milliseconds, and a spinner that flashes
+    // for one frame reads as a glitch. Only say anything if the wait is real.
+    waitTimer = setTimeout(function () {
+      if (token === loadToken) wait.classList.add('on');
+    }, 150);
+
+    var probe = new Image();
+    probe.onload = function () {
+      if (token !== loadToken) return;
+      clearTimeout(waitTimer);
+      wait.classList.remove('on');
+      // Already decoded, so this assignment paints immediately.
+      img.src = url;
+      img.classList.remove('pending');
+    };
+    probe.onerror = function () {
+      if (token !== loadToken) return;
+      clearTimeout(waitTimer);
+      // Most likely cause is the server's archive budget, which refills, so
+      // do not claim the image is gone.
+      wait.textContent = 'could not load \u2014 try again in a moment';
+      wait.classList.add('on');
+    };
+    probe.src = url;
+  }
+
+  function showImage(m) {
+    var img = $('full');
+    var wait = $('wait');
+    // Every load carries a token. Stepping quickly through the archive can
+    // leave several requests in flight, and they need not return in order --
+    // without this, a slow earlier image would overwrite a later one.
+    var token = ++loadToken;
+
+    img.alt = m.caption || 'Instagram image';
+    img.classList.add('pending');
+    clearTimeout(waitTimer);
+    clearTimeout(fetchTimer);
+    wait.className = 'wait';
+    wait.textContent = 'loading\u2026';
+
+    // Leading edge, then debounce. A deliberate single step loads at once, so
+    // the common case gains no latency. Held keys scrub without fetching
+    // anything: the reader cannot see images going past at three a second, and
+    // fetching them would spend the server's archive budget -- which the UI can
+    // otherwise outrun, 180/min against a 120/min limit -- on nothing.
+    var now = Date.now();
+    var scrubbing = now - lastShowAt < RAPID_MS;
+    lastShowAt = now;
+
+    if (scrubbing) {
+      fetchTimer = setTimeout(function () { startLoad(m, token); }, SETTLE_MS);
+    } else {
+      startLoad(m, token);
+    }
+  }
+
+  // Fetch the neighbours so a settled reader steps instantly, but only after a
+  // pause. Holding an arrow key would otherwise triple the request rate and eat
+  // the server's archive budget for images the reader never actually sees.
+  function preloadNeighbours(i) {
+    clearTimeout(preloadTimer);
+    preloadTimer = setTimeout(function () {
+      if (!images.length) return;
+      var around = [(i + 1) % images.length, (i - 1 + images.length) % images.length];
+      for (var n = 0; n < around.length; n++) {
+        if (around[n] === i) continue;
+        var img = new Image();
+        img.src = imageUrl(images[around[n]]);
+        preloaded.push(img);
+      }
+      // Hold only a short tail: enough to keep them from being collected mid
+      // flight, not so many that a long session retains every image.
+      while (preloaded.length > 6) preloaded.shift();
+    }, 400);
+  }
+
   function open(i) {
     if (i < 0 || i >= images.length) return;
     current = i;
     var m = images[i];
-    $('full').src = '/image/' + encodeURIComponent(m.id) + '.jpg';
-    $('full').alt = m.caption || 'Instagram image';
+    showImage(m);
     $('dl').href = '/download/' + encodeURIComponent(m.id) + '.jpg';
     $('counter').textContent = (i + 1) + ' of ' + images.length;
     // Three centred lines: the caption, the facts, the links. The field labels
@@ -437,6 +554,7 @@ export function renderPage(): string {
       '<p class="facts">' + facts.join(' &mdash; ') + '</p>' +
       '<p class="links">' + links + '</p>';
     renderFsMeta(m);
+    preloadNeighbours(i);
     if (!$('modal').open) $('modal').showModal();
     syncUrl();
   }
