@@ -62,6 +62,9 @@ misconfigured deploy fails immediately rather than serving errors.
 | `BROWSE_RATE_LIMIT` | no | Page/image requests per minute per IP (default `600`). |
 | `ARCHIVE_RATE_LIMIT` | no | Per minute per IP, counting only full images not on disk, i.e. those fetched from S3 (default `120`). |
 | `ARCHIVE_RATE_WINDOW_MS` | no | Window for `ARCHIVE_RATE_LIMIT` (default `60000`). |
+| `WARM_HEAD_PAGES` | no | Grid pages whose thumbnails are warmed first after a restart (default `3`). |
+| `WARM_CONCURRENCY` | no | Parallel downloads while warming priority content (default `4`). |
+| `WARM_TAIL_DELAY_MS` | no | Pause between archive thumbnails once the local cache is satisfied, so warming does not compete with live traffic (default `250`). |
 | `S3_KEEP` | no | Slots retained in S3 by the upload script (default `999`). |
 
 ## Endpoints

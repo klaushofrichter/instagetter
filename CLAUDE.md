@@ -60,6 +60,36 @@ archive grow past the cache size without growing the cache.
 - **Full images** — only the newest `maxCached()` (99), evicted **by post date,
   not by last access**, so a frequently viewed old image still ages out.
 
+#### Startup is staged, and nothing waits for it
+
+`refresh()` publishes the catalog as soon as `index.json` lands, before
+downloading a single picture. The catalog is the **only** blocking dependency:
+`readOrFetch()` falls back to S3 for a thumbnail as readily as for a full
+image, so a slot that has not been warmed yet still renders, just slower.
+Waiting for every thumbnail meant a restart showed the loading screen for as
+long as the whole archive took -- a time that grows with `S3_KEEP`, not with
+the cache size. Measured against the live bucket at 122 slots: the catalog is
+live **1.5s** after start, with 0 of 221 files warmed.
+
+Warming then runs in the order a visitor needs things, not index order:
+
+1. thumbnails for the first `WARM_HEAD_PAGES` grid pages -- the landing view
+2. full images for the first page -- the likely first click
+3. the rest of the thumbnails and full images inside the cache window, which
+   have to exist on disk anyway
+4. the remaining archive thumbnails, **paced** by `WARM_TAIL_DELAY_MS`
+
+Steps 1-3 run `WARM_CONCURRENCY` at a time because someone is waiting for
+them. Step 4 is serial, paced, and deliberately **not awaited** -- those
+thumbnails already serve from S3 on demand, so warming them only makes deep
+pagination quick. Awaiting it would make `POST /api/refresh` hang for as long
+as the archive takes (minutes at the `S3_KEEP` ceiling) and would saturate the
+uplink while it did. A `warmGeneration` counter makes a superseded tail
+abandon itself rather than write files a newer refresh has already ruled on.
+
+Because the tail outlives the promise, `progress.loading` is cleared by
+whichever finishes last -- not by a `finally` around the refresh.
+
 `readOrFetch()` serves an out-of-window full image straight from S3. It
 deliberately **does not write it to disk**: persisting on-demand fetches would
 break eviction-by-date and let the cache grow without bound until the next

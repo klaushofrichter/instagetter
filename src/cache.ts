@@ -29,6 +29,11 @@ let catalogIds = new Set<string>();
  * middleware can decide *before* the handler whether a request will reach S3.
  */
 let localImageIds = new Set<string>();
+/**
+ * Bumped by every refresh so a background tail from a superseded run stops
+ * instead of writing files the newer run has already decided about.
+ */
+let warmGeneration = 0;
 let progress: Progress = { loading: false, done: 0, total: 0 };
 let lastRefresh: string | null = null;
 let refreshing: Promise<RefreshResult> | null = null;
@@ -77,6 +82,7 @@ export function resetCache(): void {
   items = [];
   catalogIds = new Set();
   localImageIds = new Set();
+  warmGeneration += 1;
   lastRefresh = null;
   refreshing = null;
   progress = { loading: false, done: 0, total: 0 };
@@ -164,47 +170,130 @@ async function doRefresh(): Promise<RefreshResult> {
   progress = { loading: true, done: 0, total: 0 };
   try {
     return await runRefresh();
-  } finally {
+  } catch (err) {
+    // Only clear the flag on failure. On success the background tail may still
+    // be running, and it clears the flag itself when it finishes.
     progress = { ...progress, loading: false };
+    throw err;
   }
 }
 
+/**
+ * Warm the archive's remaining thumbnails in the background, paced so the
+ * cluster's bandwidth stays available to live requests. Abandons itself if a
+ * newer refresh has started.
+ */
+async function warmTail(
+  tail: WarmTask[],
+  runTask: (t: WarmTask) => Promise<void>,
+  generation: number,
+): Promise<void> {
+  const gap = warmTailDelayMs();
+  try {
+    for (const task of tail) {
+      if (generation !== warmGeneration) return;
+      await runTask(task);
+      if (gap > 0) await new Promise((r) => setTimeout(r, gap));
+    }
+  } finally {
+    if (generation === warmGeneration) progress = { ...progress, loading: false };
+  }
+}
+
+/** One grid page. The first few pages are what a visitor actually lands on. */
+const PAGE_SIZE = 9;
+
+function warmHeadPages(): number {
+  return Number(process.env.WARM_HEAD_PAGES) || 3;
+}
+
+/** Parallel downloads for the priority work. The tail is paced instead. */
+function warmConcurrency(): number {
+  return Number(process.env.WARM_CONCURRENCY) || 4;
+}
+
+/**
+ * Gap between downloads once the local cache is satisfied, so warming the rest
+ * of the archive does not compete with live traffic for the cluster's bandwidth.
+ */
+function warmTailDelayMs(): number {
+  const raw = process.env.WARM_TAIL_DELAY_MS;
+  return raw === undefined ? 250 : Number(raw);
+}
+
+interface WarmTask {
+  kind: 'images' | 'thumbs';
+  id: string;
+}
+
 async function runRefresh(): Promise<RefreshResult> {
+  const generation = ++warmGeneration;
   await ensureDirs();
   const catalog = sortNewestFirst(await fetchIndex());
   catalogIds = new Set(catalog.map((m) => m.id));
 
+  // Publish the catalog before downloading anything. It is the only blocking
+  // dependency: readOrFetch() falls back to S3 for a thumbnail as readily as
+  // for an image, so a slot that has not been warmed yet still renders -- just
+  // slower. Waiting for every thumbnail meant a restart showed the loading
+  // screen for as long as the whole archive took, which grows with S3_KEEP
+  // rather than with the cache size.
+  items = catalog;
+  lastRefresh = new Date().toISOString();
+
   // Full images are held for the newest window only; thumbs for everything.
   const keepImages = catalog.slice(0, maxCached());
   const keepImageIds = new Set(keepImages.map((m) => m.id));
-  progress = { loading: true, done: 0, total: catalog.length };
 
-  let added = 0;
+  // Warm in the order a visitor needs things, not index order. The head is the
+  // landing view and the first click; the local-cache window comes next
+  // because it has to exist on disk anyway; the rest of the archive is a tail
+  // that nothing waits for.
+  const head = warmHeadPages() * PAGE_SIZE;
+  const priority: WarmTask[] = [];
+  const tail: WarmTask[] = [];
+
+  const push = (into: WarmTask[], kind: 'images' | 'thumbs', from: ImageMeta[]) => {
+    for (const m of from) into.push({ kind, id: m.id });
+  };
+
+  push(priority, 'thumbs', catalog.slice(0, head));                  // the landing grid
+  push(priority, 'images', keepImages.slice(0, PAGE_SIZE));          // the likely first click
+  push(priority, 'thumbs', catalog.slice(head, maxCached()));        // the rest of the window
+  push(priority, 'images', keepImages.slice(PAGE_SIZE));             // the local image cache
+  push(tail, 'thumbs', catalog.slice(maxCached()));                  // the archive, paced
+
+  progress = { loading: true, done: 0, total: priority.length + tail.length };
+
+  // Counted by slot, not by file: "3 new" should mean three pictures, even
+  // though each needs a thumbnail and possibly a full image.
+  const addedIds = new Set<string>();
   const broken = new Set<string>();
 
-  for (const meta of catalog) {
-    const wantImage = keepImageIds.has(meta.id);
-    const haveThumb = await readCached('thumbs', meta.id);
-    const haveImage = wantImage ? await readCached('images', meta.id) : true;
-    if (haveThumb && haveImage) {
-      progress = { ...progress, done: progress.done + 1 };
-      continue;
-    }
+  const runTask = async (task: WarmTask): Promise<void> => {
     try {
-      if (!haveThumb) {
-        await fs.writeFile(filePath('thumbs', meta.id), await fetchThumb(meta.id));
-      }
-      if (!haveImage) {
-        await fs.writeFile(filePath('images', meta.id), await fetchImage(meta.id));
-      }
-      added += 1;
+      if (await readCached(task.kind, task.id)) return;
+      const bytes =
+        task.kind === 'thumbs' ? await fetchThumb(task.id) : await fetchImage(task.id);
+      await fs.writeFile(filePath(task.kind, task.id), bytes);
+      addedIds.add(task.id);
     } catch (err) {
       // One bad object must not abort the whole refresh.
-      console.error(`refresh: skipping ${meta.id}:`, (err as Error).message);
-      broken.add(meta.id);
+      console.error(`refresh: skipping ${task.kind}/${task.id}:`, (err as Error).message);
+      broken.add(task.id);
+    } finally {
+      progress = { ...progress, done: progress.done + 1 };
     }
-    progress = { ...progress, done: progress.done + 1 };
-  }
+  };
+
+  // Priority work runs a few at a time: it is what someone is waiting for.
+  let next = 0;
+  const workers = Array.from({ length: Math.max(1, warmConcurrency()) }, async () => {
+    while (next < priority.length) {
+      await runTask(priority[next++]);
+    }
+  });
+  await Promise.all(workers);
 
   // Thumbs age out only when they leave index.json; images when they leave the
   // newest window. Both are by post date, never by last access.
@@ -232,10 +321,21 @@ async function runRefresh(): Promise<RefreshResult> {
     localImageIds = new Set();
   }
 
-  // Advertise the whole catalog, minus any slot whose bytes would not come down
-  // -- a grid entry that cannot be opened is worse than an absent one. Full
-  // images beyond the window are served from S3 on demand by readOrFetch().
+  // Drop any slot whose thumbnail would not come down -- a grid entry that
+  // cannot be opened is worse than an absent one.
   items = catalog.filter((m) => !broken.has(m.id));
   lastRefresh = new Date().toISOString();
-  return { total: items.length, added, evicted, skipped: false, at: lastRefresh };
+  const result = { total: items.length, added: addedIds.size, evicted, skipped: false, at: lastRefresh };
+
+  // The tail is deliberately slow, serial, and *not* awaited. Nothing is
+  // waiting for it: those thumbnails already serve from S3 on demand, warming
+  // them merely makes deep pagination quick. Blocking on it would make
+  // POST /api/refresh hang for as long as the archive takes -- minutes at the
+  // S3_KEEP ceiling -- and would saturate the uplink while it did.
+  if (tail.length === 0) {
+    progress = { ...progress, loading: false };
+  } else {
+    void warmTail(tail, runTask, generation);
+  }
+  return result;
 }

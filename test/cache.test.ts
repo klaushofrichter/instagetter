@@ -149,7 +149,7 @@ describe('refresh progress', () => {
     expect(getProgress()).toEqual({ loading: false, done: 0, total: 0 });
   });
 
-  it('reports loading with a total while a refresh is in flight, then clears', async () => {
+  it('counts download work, not slots, and clears when done', async () => {
     const index = [
       meta('p1_1', '2026-03-01T00:00:00.000Z'),
       meta('p2_1', '2026-02-01T00:00:00.000Z'),
@@ -172,9 +172,10 @@ describe('refresh progress', () => {
     const after = getProgress();
 
     expect(during.loading).toBe(true);
-    expect(during.total).toBe(2);
+    // Two slots, each needing a thumbnail and a full image.
+    expect(during.total).toBe(4);
     expect(after.loading).toBe(false);
-    expect(after.done).toBe(2);
+    expect(after.done).toBe(4);
   });
 
   it('clears the loading flag even when the refresh fails', async () => {
@@ -187,5 +188,128 @@ describe('refresh progress', () => {
     await expect(refresh()).rejects.toThrow('S3 unavailable');
 
     expect(getProgress().loading).toBe(false);
+  });
+});
+
+describe('staged warm-up', () => {
+  /** An S3 whose object fetches are slow but whose index returns at once. */
+  const slowObjects = (index: ReturnType<typeof meta>[], delayMs: number) =>
+    setClient({
+      send: async (cmd: { input: { Key: string } }) => {
+        if (cmd.input.Key === 'index.json') {
+          return {
+            Body: {
+              transformToByteArray: async () =>
+                new Uint8Array(Buffer.from(JSON.stringify(index))),
+            },
+          };
+        }
+        await new Promise((r) => setTimeout(r, delayMs));
+        return { Body: { transformToByteArray: async () => new Uint8Array([0xff]) } };
+      },
+    } as never);
+
+  it('serves the whole catalog before any thumbnail has been downloaded', async () => {
+    const index = Array.from({ length: 30 }, (_, i) =>
+      meta(`s${i}_1`, new Date(Date.UTC(2026, 0, 30 - i)).toISOString()),
+    );
+    slowObjects(index, 40);
+
+    const inFlight = refresh();
+    // Long enough for index.json to resolve, far too short for 30 slots.
+    await new Promise((r) => setTimeout(r, 20));
+
+    // This is the point of the change: the UI has everything it needs while
+    // the downloads are still running.
+    expect(getItems().length).toBe(30);
+    expect(getProgress().loading).toBe(true);
+    expect(getProgress().done).toBeLessThan(getProgress().total);
+
+    await inFlight;
+    expect(getItems().length).toBe(30);
+    expect(getProgress().loading).toBe(false);
+  });
+
+  it('warms the landing pages before the rest of the archive', async () => {
+    const order: string[] = [];
+    const index = Array.from({ length: 40 }, (_, i) =>
+      meta(`s${i}_1`, new Date(Date.UTC(2026, 0, 40 - i)).toISOString()),
+    );
+    const originalHead = process.env.WARM_HEAD_PAGES;
+    const originalLimit = process.env.CACHE_LIMIT;
+    const originalGap = process.env.WARM_TAIL_DELAY_MS;
+    process.env.WARM_HEAD_PAGES = '2';   // 18 thumbs
+    process.env.CACHE_LIMIT = '20';
+    process.env.WARM_TAIL_DELAY_MS = '0';
+    setClient({
+      send: async (cmd: { input: { Key: string } }) => {
+        if (cmd.input.Key === 'index.json') {
+          return {
+            Body: {
+              transformToByteArray: async () =>
+                new Uint8Array(Buffer.from(JSON.stringify(index))),
+            },
+          };
+        }
+        order.push(cmd.input.Key);
+        return { Body: { transformToByteArray: async () => new Uint8Array([0xff]) } };
+      },
+    } as never);
+
+    try {
+      await refresh();
+      // The archive tail is deliberately not awaited by refresh(); wait for it.
+      for (let i = 0; i < 200 && getProgress().loading; i += 1) {
+        await new Promise((r) => setTimeout(r, 10));
+      }
+    } finally {
+      if (originalHead === undefined) delete process.env.WARM_HEAD_PAGES;
+      else process.env.WARM_HEAD_PAGES = originalHead;
+      if (originalLimit === undefined) delete process.env.CACHE_LIMIT;
+      else process.env.CACHE_LIMIT = originalLimit;
+      if (originalGap === undefined) delete process.env.WARM_TAIL_DELAY_MS;
+      else process.env.WARM_TAIL_DELAY_MS = originalGap;
+    }
+
+    // The landing grid's thumbs come first...
+    expect(order.slice(0, 18).every((k) => k.startsWith('thumbs/'))).toBe(true);
+    // ...and the archive tail (thumbs beyond CACHE_LIMIT) comes last.
+    const lastTwenty = order.slice(-20);
+    expect(lastTwenty.every((k) => k.startsWith('thumbs/'))).toBe(true);
+    // The first page's full images are fetched early, not left to the end.
+    const firstImageAt = order.findIndex((k) => k.startsWith('images/'));
+    expect(firstImageAt).toBeGreaterThanOrEqual(18);
+    expect(firstImageAt).toBeLessThan(order.length / 2);
+  });
+
+  it('resolves without waiting for the paced archive tail', async () => {
+    const index = Array.from({ length: 24 }, (_, i) =>
+      meta(`t${i}_1`, new Date(Date.UTC(2026, 0, 24 - i)).toISOString()),
+    );
+    const originalLimit = process.env.CACHE_LIMIT;
+    const originalGap = process.env.WARM_TAIL_DELAY_MS;
+    process.env.CACHE_LIMIT = '4';        // 20 slots land in the tail
+    process.env.WARM_TAIL_DELAY_MS = '50'; // ~1s of pacing if it were awaited
+    slowObjects(index, 0);
+    try {
+      const started = Date.now();
+      await refresh();
+      const elapsed = Date.now() - started;
+
+      // Blocking on the tail would cost 20 * 50ms of pacing alone.
+      expect(elapsed).toBeLessThan(500);
+      expect(getProgress().loading).toBe(true);
+      expect(getItems().length).toBe(24);
+
+      for (let i = 0; i < 200 && getProgress().loading; i += 1) {
+        await new Promise((r) => setTimeout(r, 10));
+      }
+      expect(getProgress().done).toBe(getProgress().total);
+    } finally {
+      if (originalLimit === undefined) delete process.env.CACHE_LIMIT;
+      else process.env.CACHE_LIMIT = originalLimit;
+      if (originalGap === undefined) delete process.env.WARM_TAIL_DELAY_MS;
+      else process.env.WARM_TAIL_DELAY_MS = originalGap;
+    }
   });
 });
