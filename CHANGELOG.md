@@ -15,6 +15,11 @@ this file is where notes are written *before* a release, not an archive of them.
 
 ### Fixed
 
+- A restart no longer shows the loading screen while every thumbnail downloads.
+  The gallery is usable as soon as the index arrives -- about a second and a
+  half -- and the pictures fill in behind it, newest pages first. Previously
+  the wait grew with the size of the whole archive rather than the cache.
+
 - The detail view no longer shows the *previous* picture while the next one
   loads. An `<img>` keeps painting its old bitmap until the new one decodes,
   which was invisible when every image came off local disk in milliseconds and
