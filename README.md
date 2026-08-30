@@ -57,9 +57,14 @@ misconfigured deploy fails immediately rather than serving errors.
 | `AWS_REGION` | yes | Bucket region. |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | yes | Credentials scoped to that one bucket. |
 | `CACHE_DIR` | no | Local image cache (default `/tmp/instagetter-cache`). |
-| `CACHE_LIMIT` | no | Images cached locally, newest first (default `99`). |
+| `CACHE_LIMIT` | no | Full images held on disk, newest first (default `99`). Thumbnails are always cached in full. |
 | `REFRESH_MIN_INTERVAL_MS` | no | Server-enforced gap between refreshes (default `5000`). |
 | `BROWSE_RATE_LIMIT` | no | Page/image requests per minute per IP (default `600`). |
+| `ARCHIVE_RATE_LIMIT` | no | Per minute per IP, counting only full images not on disk, i.e. those fetched from S3 (default `120`). |
+| `ARCHIVE_RATE_WINDOW_MS` | no | Window for `ARCHIVE_RATE_LIMIT` (default `60000`). |
+| `WARM_HEAD_PAGES` | no | Grid pages whose thumbnails are warmed first after a restart (default `3`). |
+| `WARM_CONCURRENCY` | no | Parallel downloads while warming priority content (default `4`). |
+| `WARM_TAIL_DELAY_MS` | no | Pause between archive thumbnails once the local cache is satisfied, so warming does not compete with live traffic (default `250`). |
 | `S3_KEEP` | no | Slots retained in S3 by the upload script (default `999`). |
 
 ## Endpoints
@@ -93,7 +98,8 @@ Captions, dates, locations and hashtags are written into each JPEG as
 EXIF/IPTC/XMP as well as the sidecar, so a downloaded file describes itself.
 
 **Retention.** The upload script keeps the newest `S3_KEEP` slots in S3 and
-deletes the rest. The service caches the newest `CACHE_LIMIT` locally, evicting
+deletes the rest. The service caches the newest `CACHE_LIMIT` full images locally
+(all thumbnails, regardless of age), evicting
 by *post date* rather than least-recently-used, so an old favourite still ages
 out. The cache is disposable: S3 is the source of truth and a restart refills it.
 

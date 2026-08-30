@@ -35,16 +35,74 @@ because the per-IP rate limits sit behind kourier/traefik.
   dependency-free and unauthenticated.
 - `src/routes/api.ts` — token-gated `/api/*` placeholder.
 - `src/routes/index.ts` — `/`, `/robots.txt`, favicon.
-- `src/cache.ts` — the whole state layer. Pulls `index.json` from S3, downloads
-  what is missing, evicts anything outside the newest `maxCached()` **by post
-  date, not by last access**. Concurrent refreshes share one in-flight promise
-  rather than racing on the cache directory; a single bad object is skipped
-  rather than aborting the run. `resetCache()` exists for test isolation.
+- `src/cache.ts` — the whole state layer. Pulls `index.json` from S3 and caches
+  what is missing. Concurrent refreshes share one in-flight promise rather than
+  racing on the cache directory; a single bad object is skipped rather than
+  aborting the run. `resetCache()` exists for test isolation. See **Two tiers**
+  below — the disk cache and what the gallery advertises are not the same set.
 - `src/s3.ts` — thin S3 wrapper. `setClient()` is the test seam; the suite never
   touches the network (see `test/fakeS3.ts`).
 - `src/views/page.ts` — the entire UI as one HTML string, no templating engine.
   Client JS deliberately avoids template literals so it can live inside a TS
   template literal without escaping traps.
+
+### Two tiers: the catalog and the disk cache
+
+The gallery advertises **every** slot in `index.json`; the disk holds less than
+that. These were one thing originally, and separating them is what let the
+archive grow past the cache size without growing the cache.
+
+- **Catalog** — the full sorted index, metadata only, in memory. This is what
+  `/api/images` returns, so pagination reaches the whole archive.
+- **Thumbnails** — *all* of them on disk. At ~76KB against ~327KB for a full
+  image, the entire thumb set is ~74MB even at the `S3_KEEP=999` ceiling, so
+  caching the lot is cheap and grid pagination never waits on S3.
+- **Full images** — only the newest `maxCached()` (99), evicted **by post date,
+  not by last access**, so a frequently viewed old image still ages out.
+
+#### Startup is staged, and nothing waits for it
+
+`refresh()` publishes the catalog as soon as `index.json` lands, before
+downloading a single picture. The catalog is the **only** blocking dependency:
+`readOrFetch()` falls back to S3 for a thumbnail as readily as for a full
+image, so a slot that has not been warmed yet still renders, just slower.
+Waiting for every thumbnail meant a restart showed the loading screen for as
+long as the whole archive took -- a time that grows with `S3_KEEP`, not with
+the cache size. Measured against the live bucket at 122 slots: the catalog is
+live **1.5s** after start, with 0 of 221 files warmed.
+
+Warming then runs in the order a visitor needs things, not index order:
+
+1. thumbnails for the first `WARM_HEAD_PAGES` grid pages -- the landing view
+2. full images for the first page -- the likely first click
+3. the rest of the thumbnails and full images inside the cache window, which
+   have to exist on disk anyway
+4. the remaining archive thumbnails, **paced** by `WARM_TAIL_DELAY_MS`
+
+Steps 1-3 run `WARM_CONCURRENCY` at a time because someone is waiting for
+them. Step 4 is serial, paced, and deliberately **not awaited** -- those
+thumbnails already serve from S3 on demand, so warming them only makes deep
+pagination quick. Awaiting it would make `POST /api/refresh` hang for as long
+as the archive takes (minutes at the `S3_KEEP` ceiling) and would saturate the
+uplink while it did. A `warmGeneration` counter makes a superseded tail
+abandon itself rather than write files a newer refresh has already ruled on.
+
+Because the tail outlives the promise, `progress.loading` is cleared by
+whichever finishes last -- not by a `finally` around the refresh.
+
+`readOrFetch()` serves an out-of-window full image straight from S3. It
+deliberately **does not write it to disk**: persisting on-demand fetches would
+break eviction-by-date and let the cache grow without bound until the next
+refresh. It also refuses ids absent from the catalog, so an arbitrary id cannot
+make the service issue S3 GETs.
+
+The cost of that fallback is latency, not money. Measured warm from the cluster
+to `us-east-1`: **590–755ms** for a ~327KB image, once per image per browser
+(`Cache-Control: immutable` covers repeats). Egress for the whole 999-slot
+archive is ~400MB — about four cents, and inside the 100GB/month free tier.
+What actually changes is the abuse surface: before, a client could only ever
+pull the 99 local files: bounded and free. `browseRateLimit` is now the thing
+holding that line.
 
 ### Why index.json
 
@@ -59,6 +117,31 @@ whose bytes fail to download rather than failing the refresh.
 client ignoring the UI still cannot hammer S3. Browsing limits
 (`browseRateLimit.ts`) are deliberately generous: one grid page pulls nine
 thumbnails, so a tight limit would throttle normal viewing.
+
+That generosity stopped being safe once a request could reach S3. 600/min of
+~327KB archive images is ~196MB/min of egress per IP, so
+`archiveRateLimit.ts` adds a second budget (default 120/min per IP) that counts
+**only full images not already on disk**. It decides with the synchronous
+`isLocalImage()` before the handler runs, so serving a cached image is never
+counted and paging through the newest 99 is unaffected at any speed. 120/min
+sits above realistic browsing -- the client's own 334ms step floor caps a held
+arrow key near 180/min -- while bounding egress to ~39MB/min per IP. The per-IP
+map is pruned above 1000 entries, since the key space on a public endpoint is
+every IP that ever asks.
+
+The budget is **below what the UI itself can generate** -- the 334ms navigation
+floor allows 180/min against the 120/min limit -- so the client must not spend
+it on images nobody looks at. `showImage()` therefore loads on the leading edge
+and then debounces: a deliberate single step fetches at once, but steps
+arriving inside 500ms of each other defer the fetch until the reader stops.
+Holding an arrow key scrubs through the metadata and fetches nothing. Raising
+the server budget instead would have been the wrong fix: it raises the ceiling
+for a hostile client just as much, and 200/min of ~327KB images is ~65MB/min
+per IP sustained.
+
+Note when measuring this in a browser: Chrome clamps timers to 1000ms in a
+hidden tab, so a scripted `setInterval` "scrub" silently runs at 1/s and takes
+the immediate path. Use a synchronous busy-wait to get real spacing.
 
 ## CI/CD
 
@@ -136,25 +219,52 @@ Two consequences worth keeping:
 
 ### Model and cost
 
-The nightly run uses `--model sonnet` (resolves to `claude-sonnet-5`). Measured
-from a real Opus run (session `bf6e4994`): 714k input-equivalent tokens and 36k
-output for twelve images, reported as $3.32. Re-priced on the same token mix,
-Sonnet is roughly 60% of that — 40% while its introductory pricing lasts — and
-Haiku 4.5 about 20%.
+The nightly run uses `--model opus` at **default effort**. Both alternatives
+tried so far were worse, and both were worse for the same reason:
 
-Cost is not the interesting risk. This skill is full of traps that fail
-*quietly*: carousels needing `?img_index=`, blocked downloads reporting success,
-a loose selector picking up other posts' images, an "AI content" badge sitting
-where the location goes. The no-op guard catches a run that records nothing; it
-cannot catch a run that records twelve images with wrong captions. When changing
-model or effort, check the output rather than just the exit code.
+| Run | Time | Turns | Cost |
+|---|---|---|---|
+| Opus 5, default, 2026-08-26 | 9.5 min | **67** | $3.32 |
+| Sonnet 5, 2026-08-27 | 20.7 min | 150 | $3.81 |
+| Opus 5, `--effort low`, 2026-08-28 | 12.0 min | 88 | $4.38 |
 
-Haiku 4.5 also has a 200K context window against 1M for the others. The Opus run
-averaged ~52K per turn, so it would probably fit, but a night of long carousels
-could exceed it mid-run.
+**The lesson: for an agentic loop, cheaper per-token rates and lower effort do
+not mean cheaper runs. Turn count drives consumption, and turn count is
+model- and effort-dependent.**
 
-`scripts/format-stream.py` logs the token totals per run, so the next comparison
-is measurement rather than estimate.
+Sonnet was predicted at ~40% of Opus and came in at 115%: 150 turns against 67,
+and every extra turn in an agentic loop re-reads the whole cached context.
+`--effort low` was then tried on the theory that fewer, more consolidated tool
+calls would cut turns. It did the opposite — 88 turns — so the run got more
+expensive, not less. The Haiku estimate from the original table rested on the
+same bad assumption and should be treated as **unknown until measured**; a
+weaker model plausibly needs more turns still, and it has a 200K context window
+against 1M.
+
+#### Reading those cost figures
+
+Two caveats, both learned by checking rather than assuming:
+
+- **They are not money billed.** The cron job exports no `ANTHROPIC_API_KEY`, so
+  it runs on the stored OAuth subscription credentials. `total_cost_usd` — which
+  `scripts/format-stream.py` passes through verbatim from the CLI result event,
+  it is not computed here — is a *notional* pay-as-you-go equivalent. The real
+  constraint is subscription usage, not dollars. The numbers are still valid for
+  comparing runs against each other, which is all they are used for.
+- **Only instrumented runs have token detail.** Token logging was added in
+  `91034ef`, for the Sonnet run. The 2026-08-26 Opus baseline predates it and
+  logged only turns, duration and cost — it has no `cache_read` figure, and an
+  earlier version of this table cited one that is not in the log. Do not quote
+  per-token detail for that run.
+
+Sonnet's output quality was fine: 16 slots including a 5-slide carousel
+completed in full, sensible captions and locations, no thumbnails. The risk
+worth watching turned out to be cost, not correctness — but the correctness risk
+is still real, because the no-op guard catches a run that records nothing, not
+one that records twelve images with wrong captions.
+
+`scripts/format-stream.py` logs the token totals and turn count per run, which
+is what made this measurable. **Turns is the number to compare** (baseline: 67).
 
 Output streams as NDJSON through `scripts/format-stream.py`. Buffered output
 made a twelve-minute extraction look identical to a hang, and cost a run that

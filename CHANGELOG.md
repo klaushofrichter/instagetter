@@ -13,10 +13,37 @@ this file is where notes are written *before* a release, not an archive of them.
      notes. Keep prose out of it unless you mean it to be published. -->
 ## [Unreleased]
 
+### Fixed
+
+- A restart no longer shows the loading screen while every thumbnail downloads.
+  The gallery is usable as soon as the index arrives -- about a second and a
+  half -- and the pictures fill in behind it, newest pages first. Previously
+  the wait grew with the size of the whole archive rather than the cache.
+
+- The detail view no longer shows the *previous* picture while the next one
+  loads. An `<img>` keeps painting its old bitmap until the new one decodes,
+  which was invisible when every image came off local disk in milliseconds and
+  obvious once archive images arrived from S3. The image is now blanked to the
+  themed stage background the moment you navigate, so the picture never
+  contradicts the caption beside it.
+
 ### Added
 
+- The gallery now browses the **whole** S3 archive, not just the locally cached
+  window. Every thumbnail is held on disk, so grid pagination stays instant at
+  any depth; full images outside the newest `CACHE_LIMIT` are fetched from S3 on
+  demand, adding roughly half a second the first time one is opened.
+- Holding an arrow key now scrubs through the archive without fetching the
+  full-size images as they fly past, so browsing cannot exhaust the server's
+  own archive rate budget. The image loads as soon as you stop.
+- Neighbouring images are prefetched after a short pause, so a settled reader
+  steps through the archive instantly. Holding a key skips the prefetch rather
+  than tripling the request rate.
+- `ARCHIVE_RATE_LIMIT` (default 120/min per IP), a second rate budget counting
+  only full images that are not on disk. Cached images are never counted, so
+  ordinary browsing is unaffected.
 - Open Graph tags on the gallery page, so a pasted link unfurls with the newest
-  cached image as its preview. Before the first refresh the page falls back to a
+  image as its preview. Before the first refresh the page falls back to a
   text-only card rather than pointing at an image the service cannot serve.
 - `robots.txt` now names the link-preview scrapers (Slack, X, Facebook, Discord)
   and allows them; everything else is still disallowed and the page keeps its
