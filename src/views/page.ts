@@ -8,7 +8,9 @@ function appVersion(): string {
   return process.env.APP_VERSION || 'dev';
 }
 
-export function renderPage(): string {
+/** `ogTags` is a pre-built block of Open Graph <meta> elements (see views/og.ts);
+ *  the view stays ignorant of the cache that produced them. */
+export function renderPage(ogTags: string): string {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -16,6 +18,7 @@ export function renderPage(): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <title>instagetter</title>
+${ogTags}
 <link rel="icon" href="/favicon.png" type="image/png">
 <style>
   :root {

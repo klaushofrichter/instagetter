@@ -13,6 +13,15 @@ this file is where notes are written *before* a release, not an archive of them.
      notes. Keep prose out of it unless you mean it to be published. -->
 ## [Unreleased]
 
+### Added
+
+- Open Graph tags on the gallery page, so a pasted link unfurls with the newest
+  cached image as its preview. Before the first refresh the page falls back to a
+  text-only card rather than pointing at an image the service cannot serve.
+- `robots.txt` now names the link-preview scrapers (Slack, X, Facebook, Discord)
+  and allows them; everything else is still disallowed and the page keeps its
+  `noindex, nofollow`.
+
 ## [1.0.0] - 2026-08-25
 
 First production release: the gallery behind
