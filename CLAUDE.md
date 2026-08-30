@@ -9,8 +9,13 @@ gallery of the newest images from the `klaushofrichter` account, reading them
 from S3. There is no database and no persistence: S3 is the source of truth and
 the local cache is disposable.
 
-The page is **public** by deliberate choice, with `robots.txt` disallowing
-crawlers. There is no OAuth and no session layer; the only credential is the
+The page is **public** by deliberate choice, and **indexable**: `robots.txt`
+allows everything and the page carries no `noindex`. It was the opposite
+originally -- `noindex, nofollow` plus `Disallow: /` -- which cost most of the
+Lighthouse SEO score and, less obviously, stopped Slack and X unfurling a
+pasted link, since both fetch `robots.txt` before building a preview. Opening
+it up was a deliberate reversal, not an oversight: anything here is meant to be
+found. There is no OAuth and no session layer; the only credential is the
 bearer token on `/api/status`.
 
 ## Commands

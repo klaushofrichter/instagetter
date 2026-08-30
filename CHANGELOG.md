@@ -15,6 +15,13 @@ this file is where notes are written *before* a release, not an archive of them.
 
 ### Fixed
 
+- The first row of thumbnails no longer waits on lazy-loading. The largest
+  image on screen *is* the first thumbnail, so deferring it delayed the very
+  paint the metric measures.
+
+- Links in dark mode were too faint to meet WCAG AA (3.7:1 against the required
+  4.5:1). The accent is lightened in dark mode only; light mode is unchanged.
+
 - A restart no longer shows the loading screen while every thumbnail downloads.
   The gallery is usable as soon as the index arrives -- about a second and a
   half -- and the pictures fill in behind it, newest pages first. Previously
@@ -45,9 +52,14 @@ this file is where notes are written *before* a release, not an archive of them.
 - Open Graph tags on the gallery page, so a pasted link unfurls with the newest
   image as its preview. Before the first refresh the page falls back to a
   text-only card rather than pointing at an image the service cannot serve.
-- `robots.txt` now names the link-preview scrapers (Slack, X, Facebook, Discord)
-  and allows them; everything else is still disallowed and the page keeps its
-  `noindex, nofollow`.
+- `robots.txt` now allows every crawler, and the page no longer carries
+  `noindex, nofollow`. The gallery is meant to be found; blocking indexing also
+  stopped Slack and X unfurling a pasted link, since both read `robots.txt`
+  first.
+- A meta description, so search results and previews have something to quote.
+- Responses are gzipped. The page is ~42KB of inline CSS and JS and was going
+  out uncompressed; it is now ~13KB on the wire, and the image catalog shrinks
+  with it. JPEG bytes are left alone.
 
 ## [1.0.0] - 2026-08-25
 

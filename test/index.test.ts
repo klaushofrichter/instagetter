@@ -31,21 +31,28 @@ describe('GET /favicon.png', () => {
 });
 
 describe('GET /robots.txt', () => {
-  it('still blocks every crawler by default', async () => {
+  it('lets crawlers index the site', async () => {
     const response = await request(createApp()).get('/robots.txt');
 
     expect(response.status).toBe(200);
-    expect(response.text).toContain('User-agent: *\nDisallow: /');
+    expect(response.text).toContain('User-agent: *');
+    expect(response.text).toContain('Allow: /');
+    expect(response.text).not.toContain('Disallow: /');
+  });
+});
+
+describe('indexability', () => {
+  it('does not tell robots to stay away', async () => {
+    const response = await request(createApp()).get('/');
+
+    expect(response.text).not.toContain('noindex');
+    expect(response.text).not.toContain('nofollow');
   });
 
-  // Without these the Open Graph tags are dead weight in Slack and X, which
-  // fetch robots.txt before unfurling a pasted link.
-  it('lets the link-preview scrapers through', async () => {
-    const response = await request(createApp()).get('/robots.txt');
+  it('carries a meta description', async () => {
+    const response = await request(createApp()).get('/');
 
-    for (const bot of ['Slackbot-LinkExpanding', 'Slackbot', 'Twitterbot', 'facebookexternalhit', 'Discordbot']) {
-      expect(response.text).toContain(`User-agent: ${bot}\nAllow: /`);
-    }
+    expect(response.text).toMatch(/<meta name="description" content="[^"]{20,}">/);
   });
 });
 
