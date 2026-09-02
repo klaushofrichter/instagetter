@@ -179,13 +179,13 @@ the immediate path. Use a synchronous busy-wait to get real spacing.
 
 ### Dependency security
 
-`package.json` carries one `overrides` entry: `qs: ^6.16.0`. Express 4.22.2 is
-the latest 4.x and declares `qs: ~6.15.1`, which resolves to 6.15.3 -- inside
-the vulnerable range for two advisories (array-limit bypass, DoS via attacker
-controlled `isBuffer`). There is no express release, on 4 **or** 5, that ships a
-fixed `qs`: express 5.2.1 pins 6.15.3 too, so upgrading the major does not fix
-this. The override is the only route, and it forces a version outside express's
-declared tilde range.
+`package.json` carries one `overrides` entry: `qs: ^6.16.0`. Express 5.2.1
+declares `qs: ~6.15.1`, which resolves to 6.15.3 -- inside the vulnerable range
+for two advisories (array-limit bypass, DoS via attacker controlled
+`isBuffer`). No express release ships a fixed `qs`: 4.22.2 pins 6.15.3 as well,
+which is why moving to the 5 major did **not** remove the need for this. The
+override is the only route, and it forces a version outside express's declared
+tilde range.
 
 That is acceptable here specifically because **nothing in `src/` reads
 `req.query`** -- express parses the query string and the result is never
