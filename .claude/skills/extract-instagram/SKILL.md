@@ -134,7 +134,7 @@ sometimes renders a blank frame). Then:
    and prunes S3 to the newest 999 slots.
 7. `node scripts/state.js --set-cursor <oldest ISO handled>` and
    `node scripts/state.js --record <newCount> <backfillCount>`.
-8. Close the tab. Then `curl -s -X POST https://insta.skylar.technology/api/refresh`
+8. Close the tab. Then `curl -s -X POST https://insta.klaushofrichter.net/api/refresh`
    so the live cache picks the images up, and report what was added.
 
 ### Scrolling the grid

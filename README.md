@@ -1,7 +1,7 @@
 # instagetter
 
 A small self-hosted gallery for your own Instagram photos, running at
-**[insta.skylar.technology](https://insta.skylar.technology)**.
+**[insta.klaushofrichter.net](https://insta.klaushofrichter.net)**.
 
 It extracts the newest posts from a single Instagram account you control,
 stores them in S3 at full resolution with their metadata, and serves them as a

@@ -1,7 +1,7 @@
 {
   "name": "instagetter",
   "private": true,
-  "description": "Gallery service for insta.skylar.technology: serves Instagram images extracted to S3.",
+  "description": "Gallery service for insta.klaushofrichter.net: serves Instagram images extracted to S3.",
   "license": "MIT",
   "type": "commonjs",
   "scripts": {
