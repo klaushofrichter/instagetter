@@ -176,3 +176,55 @@ describe('archive rate limiting', () => {
     });
   });
 });
+
+// Pins how `/:id.jpg` parses, so the path-to-regexp change under an express
+// major is proven at parity rather than assumed. These assertions are written
+// against express 4 and must hold unchanged afterwards.
+describe('the :id.jpg route pattern', () => {
+  beforeEach(async () => {
+    installFakeS3([meta('abc_1', '2026-05-01T00:00:00.000Z')]);
+    await request(createApp()).post('/api/refresh');
+    resetRefreshLimiter();
+  });
+
+  it('captures the id without the .jpg suffix', async () => {
+    // If the suffix leaked into the param the lookup would miss and 404.
+    const response = await request(createApp()).get('/thumb/abc_1.jpg');
+
+    expect(response.status).toBe(200);
+    expect(response.headers['content-type']).toContain('image/jpeg');
+  });
+
+  it('requires the .jpg suffix', async () => {
+    expect((await request(createApp()).get('/thumb/abc_1')).status).toBe(404);
+  });
+
+  it('does not match a different extension', async () => {
+    expect((await request(createApp()).get('/thumb/abc_1.png')).status).toBe(404);
+  });
+
+  it('does not let a slash into the id', async () => {
+    expect((await request(createApp()).get('/thumb/a/b.jpg')).status).toBe(404);
+  });
+});
+
+// Express 5 forwards a rejected async handler to the error handler, where
+// express 4 left the request hanging. readOrFetch swallows S3 failures and
+// returns null, so neither applies -- this pins that.
+describe('an S3 failure while serving an archive image', () => {
+  it('answers 404 rather than 500 or a hang', async () => {
+    installFakeS3(
+      [meta('old_1', '2026-01-01T00:00:00.000Z'), meta('new_1', '2026-06-01T00:00:00.000Z')],
+      { failFor: ['images/old_1.jpg'] },
+    );
+    const app = createApp();
+    await request(app).post('/api/refresh');
+
+    const response = await request(app).get('/image/old_1.jpg');
+
+    // The refresh skips the slot whose bytes fail, so nothing is on disk and
+    // the S3 fallback fails too: a clean 404, not a 500 and not a hang.
+    expect(response.status).toBe(404);
+    expect(response.body).toEqual({ error: 'not found' });
+  });
+});
