@@ -49,6 +49,12 @@ this file is where notes are written *before* a release, not an archive of them.
 - `ARCHIVE_RATE_LIMIT` (default 120/min per IP), a second rate budget counting
   only full images that are not on disk. Cached images are never counted, so
   ordinary browsing is unaffected.
+- Open Graph tags on the gallery page, so a pasted link unfurls with the newest
+  image as its preview. Before the first refresh the page falls back to a
+  text-only card rather than pointing at an image the service cannot serve.
+- `robots.txt` now names the link-preview scrapers (Slack, X, Facebook, Discord)
+  and allows them; everything else is still disallowed and the page keeps its
+  `noindex, nofollow`.
 
 ## [1.0.0] - 2026-08-25
 
