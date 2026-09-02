@@ -13,6 +13,11 @@ this file is where notes are written *before* a release, not an archive of them.
      notes. Keep prose out of it unless you mean it to be published. -->
 ## [Unreleased]
 
+### Changed
+
+- TypeScript 5 -> 7. The compiler drops the old `node` module resolution, so
+  `tsconfig.json` moves to `node16`. Emitted output is unchanged CommonJS.
+
 ### Security
 
 - The last outstanding advisories are cleared: `qs` is pinned to ^6.16.0 through

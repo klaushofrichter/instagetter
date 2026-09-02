@@ -1,8 +1,13 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "commonjs",
-    "moduleResolution": "node",
+    // TypeScript 7 removed moduleResolution "node" (node10). "bundler" also
+    // compiles cleanly, but it models a bundler's resolution rather than
+    // Node's and would accept imports that fail at run time -- wrong for a
+    // plain Node server. "node16" is the honest pairing, and "module" must
+    // match it. Output stays CommonJS, which is what the Dockerfile runs.
+    "module": "node16",
+    "moduleResolution": "node16",
     "lib": ["ES2022"],
     "outDir": "dist",
     "rootDir": "src",
