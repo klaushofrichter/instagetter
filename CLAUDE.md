@@ -38,9 +38,25 @@ npm test        # vitest run
 
 Run one file: `npx vitest run test/api.test.ts`. No lint command is configured.
 
+### The stack, as of 2026-09-02
+
+Express **5**, TypeScript **7**, vitest **4**, on Node **24 LTS**
+(`node:24-alpine` in both Dockerfile stages, `node-version: 24` in CI — keep
+those two in step).
+
+`tsconfig.json` uses `module: node16` + `moduleResolution: node16`. TypeScript 7
+removed the old `node` (node10) resolution; `bundler` also compiles but models a
+bundler's resolution rather than Node's, which is wrong for a service compiled
+by `tsc` and run directly on Node. Emitted output is CommonJS either way, and
+that is what the Dockerfile runs — check it stays that way if these ever move.
+
+Express 5 needed no source change, because `isValidId()` already narrows
+`unknown` to `string`; express 5 types route params as `string | string[]`, and
+that guard is what absorbs it.
+
 ## Architecture
 
-Plain Express, composed in `src/app.ts` (`createApp()`). `trust proxy` is on
+Plain Express 5, composed in `src/app.ts` (`createApp()`). `trust proxy` is on
 because the per-IP rate limits sit behind kourier/traefik.
 
 - `src/routes/gallery.ts` — the gallery API: `/api/images`, `POST /api/refresh`,
@@ -162,9 +178,11 @@ the immediate path. Use a synchronous busy-wait to get real spacing.
 - `build-push.yml` — push to `main`: tests, then publish
   `ghcr.io/klaushofrichter/instagetter` (`latest` + SHA).
 - `production-checks.yml` — PRs into **`main` and `production`**: tests, build,
-  `npm audit`, CodeQL. SARIF upload is disabled (no GitHub Advanced Security on
-  this private repo); findings are counted locally with `jq` and any finding
-  fails the job.
+  `npm audit`, CodeQL. The repo is **public**, so code scanning is free and the
+  workflow uploads SARIF (`upload: always`) — findings land in the Security tab
+  with full dataflow detail. It *also* writes a local copy and counts findings
+  with `jq`, failing the job on any of them: alerts by themselves never fail a
+  check, and this one gates merging into `production`.
 
   It listens on `main` as well because that is where Dependabot opens its PRs.
   Previously this file only triggered on `production` and `build-push.yml` only
@@ -197,6 +215,34 @@ removing the override or before adding the first server-side `req.query` use.
 Note the audit gate would *not* catch the override being deleted: the
 reintroduced advisories are moderate and the threshold is `high`. Dependabot
 alerts are what would surface it.
+
+#### Majors are taken, not ignored
+
+There are deliberately **no `ignore` rules** in `dependabot.yml`. Ignoring a
+major is how it never gets taken, and the goal is to end up compliant rather
+than permanently deferred. So a rejected major gets a reason and a revisit
+condition, not silence — and it will keep reappearing weekly until it lands,
+which is the intended cost.
+
+State as of 2026-09-02:
+
+| Major | Status |
+|---|---|
+| vitest 2 → 4 | taken — cleared a critical and a high |
+| TypeScript 5 → 7 | taken |
+| express 4 → 5, `@types/express` 4 → 5 | taken |
+| `@types/node` → 26, `node:26-alpine` | **waiting on Node 26 reaching LTS, October 2026** |
+
+The Node 26 pair is the one genuinely date-gated item: Node 26 is `lts: false`
+today. Take the Dockerfile, CI's `node-version` and `@types/node` together in
+one PR when it lands — types ahead of the runtime is the direction that fails in
+production rather than in CI, which is why `@types/node` sits at ^24 rather than
+following latest.
+
+Two majors were closed on a **false premise** worth remembering: Dependabot
+raised express 5 twice as the fix for the `qs` advisory. It is not one —
+express 5.2.1 declares `qs: ~6.15.1` exactly as 4.22.2 did. The override above
+is what fixes it, on either major.
 
 
 Alerts and automated security fixes are **repo settings**, not config, and are
