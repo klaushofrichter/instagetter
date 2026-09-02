@@ -48,7 +48,10 @@ function prune(now: number, windowMs: number): void {
  * egress to roughly 39MB/min per IP.
  */
 export function archiveRateLimit(req: Request, res: Response, next: NextFunction): void {
-  const id = req.params.id;
+  // Express 5 widens route params to `string | string[]`; an unexpected shape
+  // is not something this budget should try to price, and the route handler
+  // rejects it with a 400 anyway.
+  const id = typeof req.params.id === 'string' ? req.params.id : undefined;
   if (!id || isLocalImage(id)) {
     next();
     return;
