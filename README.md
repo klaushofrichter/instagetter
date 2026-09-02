@@ -1,5 +1,23 @@
 # instagetter
 
+[![Release](https://img.shields.io/github/v/release/klaushofrichter/instagetter?label=release&color=blue)](https://github.com/klaushofrichter/instagetter/releases)
+[![PR checks](https://github.com/klaushofrichter/instagetter/actions/workflows/production-checks.yml/badge.svg)](https://github.com/klaushofrichter/instagetter/actions/workflows/production-checks.yml)
+[![Build and publish image](https://github.com/klaushofrichter/instagetter/actions/workflows/build-push.yml/badge.svg)](https://github.com/klaushofrichter/instagetter/actions/workflows/build-push.yml)
+[![Deploy production](https://github.com/klaushofrichter/instagetter/actions/workflows/deploy-production.yml/badge.svg)](https://github.com/klaushofrichter/instagetter/actions/workflows/deploy-production.yml)
+[![Dependabot](https://img.shields.io/badge/dependabot-enabled-025E8C?logo=dependabot&logoColor=white)](https://github.com/klaushofrichter/instagetter/security/dependabot)
+
+<!-- The release badge tracks the newest tag, which a successful production
+     deploy cuts (see "Releasing" in CLAUDE.md). It is the last *released*
+     version, not necessarily the running one: a deploy that rolls out and then
+     fails its smoke test leaves production ahead of the tag. The about panel
+     reports the running build.
+
+     The three workflow badges are live status. The Dependabot one is static -
+     GitHub publishes no endpoint for alert status on a repo, so it asserts
+     that alerts, security updates, and .github/dependabot.yml are all in place
+     rather than checking them. If Dependabot is ever turned off, this badge
+     will not notice. -->
+
 A small self-hosted gallery for your own Instagram photos, running at
 **[insta.klaushofrichter.net](https://insta.klaushofrichter.net)**.
 

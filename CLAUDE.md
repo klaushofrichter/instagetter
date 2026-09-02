@@ -161,9 +161,32 @@ the immediate path. Use a synchronous busy-wait to get real spacing.
 
 - `build-push.yml` — push to `main`: tests, then publish
   `ghcr.io/klaushofrichter/instagetter` (`latest` + SHA).
-- `production-checks.yml` — PRs into `production`: tests, build, CodeQL.
-  SARIF upload is disabled (no GitHub Advanced Security on this private repo);
-  findings are counted locally with `jq` and any finding fails the job.
+- `production-checks.yml` — PRs into **`main` and `production`**: tests, build,
+  `npm audit`, CodeQL. SARIF upload is disabled (no GitHub Advanced Security on
+  this private repo); findings are counted locally with `jq` and any finding
+  fails the job.
+
+  It listens on `main` as well because that is where Dependabot opens its PRs.
+  Previously this file only triggered on `production` and `build-push.yml` only
+  on push, so a PR into `main` ran **nothing** — dependency bumps landed
+  unverified and were first tested when someone opened the promotion PR.
+
+  The `npm audit --audit-level=high` step lives inside the `test` job on
+  purpose. `test` is a required status check on `production`; a separate audit
+  job would gate nothing. The threshold is `high` rather than the default so a
+  moderate advisory whose only fix is a major upgrade cannot wedge unrelated
+  merges — Dependabot alerts still surface those.
+
+### Dependency security
+
+Alerts and automated security fixes are **repo settings**, not config, and are
+switched on. `.github/dependabot.yml` covers npm, github-actions and docker,
+weekly on Monday 06:00 CT. Minor and patch updates are grouped into production
+and development PRs; majors arrive ungrouped and one at a time, because those
+are the ones that need reading rather than batch-merging.
+
+Note the config only has effect on the **default branch** — a `dependabot.yml`
+that exists only on a feature branch is silently ignored.
 - `deploy-production.yml` — push to `production`, on the self-hosted k3s
   runner: build/push the SHA image, clone `kube-setup`, rewrite the image tag
   in `manifests/insta/insta-ksvc.yaml`, commit/push it, `kubectl apply`, wait
