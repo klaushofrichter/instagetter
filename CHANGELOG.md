@@ -15,6 +15,15 @@ this file is where notes are written *before* a release, not an archive of them.
 
 ### Security
 
+- The last outstanding advisories are cleared: `qs` is pinned to ^6.16.0 through
+  an `overrides` entry, taking `npm audit` to zero. No express release on either
+  major ships a fixed `qs`, so the override is the only route.
+- `isValidId()` now rejects non-strings. `RegExp.test()` coerces, so
+  `isValidId(undefined)` previously returned **true** — it matched the string
+  `"undefined"` — and a single-element array matched its own contents.
+
+### Security
+
 - Dependency security baseline: Dependabot alerts and automated security fixes
   enabled, `.github/dependabot.yml` covering npm, GitHub Actions and Docker, and
   `npm audit --audit-level=high` as a blocking step inside the required `test`

@@ -179,6 +179,26 @@ the immediate path. Use a synchronous busy-wait to get real spacing.
 
 ### Dependency security
 
+`package.json` carries one `overrides` entry: `qs: ^6.16.0`. Express 4.22.2 is
+the latest 4.x and declares `qs: ~6.15.1`, which resolves to 6.15.3 -- inside
+the vulnerable range for two advisories (array-limit bypass, DoS via attacker
+controlled `isBuffer`). There is no express release, on 4 **or** 5, that ships a
+fixed `qs`: express 5.2.1 pins 6.15.3 too, so upgrading the major does not fix
+this. The override is the only route, and it forces a version outside express's
+declared tilde range.
+
+That is acceptable here specifically because **nothing in `src/` reads
+`req.query`** -- express parses the query string and the result is never
+consumed, so the changed parsing behaviour has no path into application code.
+The client reads its own `?page=`/`?image=` deep links from
+`window.location.search` in the browser. Re-check that assumption before
+removing the override or before adding the first server-side `req.query` use.
+
+Note the audit gate would *not* catch the override being deleted: the
+reintroduced advisories are moderate and the threshold is `high`. Dependabot
+alerts are what would surface it.
+
+
 Alerts and automated security fixes are **repo settings**, not config, and are
 switched on. `.github/dependabot.yml` covers npm, github-actions and docker,
 weekly on Monday 06:00 CT. Minor and patch updates are grouped into production
