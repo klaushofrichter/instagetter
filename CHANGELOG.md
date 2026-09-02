@@ -13,6 +13,18 @@ this file is where notes are written *before* a release, not an archive of them.
      notes. Keep prose out of it unless you mean it to be published. -->
 ## [Unreleased]
 
+### Changed
+
+- Express 4 -> 5. No behaviour change intended: the route patterns, the
+  `:id.jpg` parsing, rate limiting, compression and the proxy-derived
+  `og:url` were all pinned by tests written against 4 first, and hold
+  unchanged on 5.
+
+### Changed
+
+- TypeScript 5 -> 7. The compiler drops the old `node` module resolution, so
+  `tsconfig.json` moves to `node16`. Emitted output is unchanged CommonJS.
+
 ### Security
 
 - The last outstanding advisories are cleared: `qs` is pinned to ^6.16.0 through
