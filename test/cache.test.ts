@@ -313,3 +313,17 @@ describe('staged warm-up', () => {
     }
   });
 });
+
+// Express 5 types route params as `string | string[]`, so this guard is what
+// stands between an unexpected shape and the rest of the pipeline.
+describe('isValidId', () => {
+  it('accepts a well-formed slot id', () => {
+    expect(isValidId('abc_01')).toBe(true);
+  });
+
+  it('rejects anything that is not a string', () => {
+    expect(isValidId(['abc_01', 'def_02'])).toBe(false);
+    expect(isValidId(undefined)).toBe(false);
+    expect(isValidId(42)).toBe(false);
+  });
+});

@@ -91,8 +91,13 @@ export function resetCache(): void {
 /** Slot ids are `<shortcode>_<NN>` — letters, digits, underscore, hyphen. */
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 
-export function isValidId(id: string): boolean {
-  return ID_PATTERN.test(id);
+export function isValidId(id: unknown): id is string {
+  // The typeof guard is not ceremony: RegExp.test() coerces, so test(undefined)
+  // matches "undefined" and returns true, and a single-element array matches
+  // its own contents. Express 5 types route params as `string | string[]`, so
+  // both shapes can reach here. Narrowing to `id is string` also lets callers
+  // use req.params.id directly once this has passed.
+  return typeof id === 'string' && ID_PATTERN.test(id);
 }
 
 /**
