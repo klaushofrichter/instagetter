@@ -13,6 +13,13 @@ this file is where notes are written *before* a release, not an archive of them.
      notes. Keep prose out of it unless you mean it to be published. -->
 ## [Unreleased]
 
+### Changed
+
+- The service now lives at **insta.klaushofrichter.net**. The old address,
+  `insta.skylar.technology`, permanently redirects there and will keep doing so
+  indefinitely, so existing links and bookmarks continue to work -- including
+  deep links, since the redirect preserves the path and query string.
+
 ### Fixed
 
 - The first row of thumbnails no longer waits on lazy-loading. The largest

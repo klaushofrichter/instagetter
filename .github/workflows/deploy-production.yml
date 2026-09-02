@@ -154,11 +154,11 @@ jobs:
         run: |
           set -euo pipefail
           for i in $(seq 1 10); do
-            code=$(curl -s -o /dev/null -w "%{http_code}" https://insta.skylar.technology/health || true)
+            code=$(curl -s -o /dev/null -w "%{http_code}" https://insta.klaushofrichter.net/health || true)
             [ "$code" = "200" ] && echo "health ok" && break
             echo "health not ready (HTTP ${code}), retry ${i}/10"; sleep 6
           done
           [ "$code" = "200" ] || { echo "::error::/health did not return 200"; exit 1; }
-          page=$(curl -s -o /dev/null -w "%{http_code}" https://insta.skylar.technology/)
+          page=$(curl -s -o /dev/null -w "%{http_code}" https://insta.klaushofrichter.net/)
           [ "$page" = "200" ] || { echo "::error::public page returned ${page}"; exit 1; }
           echo "public page ok"
