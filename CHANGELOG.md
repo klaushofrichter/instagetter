@@ -13,6 +13,20 @@ this file is where notes are written *before* a release, not an archive of them.
      notes. Keep prose out of it unless you mean it to be published. -->
 ## [Unreleased]
 
+### Security
+
+- Dependency security baseline: Dependabot alerts and automated security fixes
+  enabled, `.github/dependabot.yml` covering npm, GitHub Actions and Docker, and
+  `npm audit --audit-level=high` as a blocking step inside the required `test`
+  check.
+- PR checks now run on pull requests into `main`, not only `production`. A PR
+  into `main` previously ran nothing at all, so dependency updates landed
+  unverified.
+- `vitest` 2 -> 4, clearing a critical advisory (arbitrary file read and execute
+  via the Vitest UI server) and a high one in the bundled `vite` (path
+  traversal). Test-only dependencies, never shipped in the image, but they run
+  on CI runners with repository credentials in scope.
+
 ### Changed
 
 - The service now lives at **insta.klaushofrichter.net**. The old address,

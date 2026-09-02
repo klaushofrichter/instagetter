@@ -1,8 +1,12 @@
-name: Production PR checks
+name: PR checks
 
+# Both branches, not just production. PRs to main -- Dependabot's in
+# particular -- previously ran nothing at all: build-push.yml triggers on push,
+# and this file only listened for production. Dependency bumps were landing on
+# main unverified and were first tested when someone opened the promotion PR.
 on:
   pull_request:
-    branches: [production]
+    branches: [main, production]
 
 jobs:
   test:
@@ -19,6 +23,17 @@ jobs:
       - run: npm test
 
       - run: npm run build
+
+      # Dependabot notices a vulnerable dependency, but noticing is not
+      # blocking: without this step a package with a known advisory can be
+      # merged and deployed while its fix PR sits open. This lives in `test`
+      # rather than a job of its own because `test` is a required check on
+      # production -- a separate job would gate nothing.
+      #
+      # Threshold is `high` rather than the default so that a moderate advisory
+      # whose only fix is a major upgrade cannot wedge unrelated merges; the
+      # alerts still surface those, they just do not stop the queue.
+      - run: npm audit --audit-level=high
 
   codeql:
     runs-on: ubuntu-latest
