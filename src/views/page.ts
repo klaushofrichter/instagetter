@@ -16,7 +16,7 @@ export function renderPage(ogTags: string): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex, nofollow">
+<meta name="description" content="A gallery of the newest photographs from the klaushofrichter Instagram account.">
 <title>instagetter</title>
 ${ogTags}
 <link rel="icon" href="/favicon.png" type="image/png">
@@ -31,6 +31,9 @@ ${ogTags}
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       --bg: #0f1115; --fg: #eef1f5; --muted: #9aa3af; --line: #262b33;
+      /* The light-mode accent is only 3.7:1 on this background; lightened
+         here to clear WCAG AA while staying recognisably the same pink. */
+      --accent: #d4589f;
       --card: #171a20; --overlay: rgba(10,12,15,.97);
       --btn: #232830; --btn-fg: #eef1f5;
       --fsmeta-bg: rgba(12,14,18,.62); --fsmeta-fg: #f3f5f8; --fsmeta-muted: #b6bec9;
@@ -39,6 +42,9 @@ ${ogTags}
   }
   :root[data-theme="dark"] {
     --bg: #0f1115; --fg: #eef1f5; --muted: #9aa3af; --line: #262b33;
+    /* The light-mode accent is only 3.7:1 on this background; lightened
+       here to clear WCAG AA while staying recognisably the same pink. */
+    --accent: #d4589f;
     --card: #171a20; --overlay: rgba(10,12,15,.97);
     --btn: #232830; --btn-fg: #eef1f5;
     --fsmeta-bg: rgba(12,14,18,.62); --fsmeta-fg: #f3f5f8; --fsmeta-muted: #b6bec9;
@@ -338,6 +344,10 @@ ${ogTags}
 <script>
 (function () {
   var PER_PAGE = 9;
+  // One desktop grid row. On a phone the grid is a single column, so this
+  // eagerly fetches two thumbnails nobody sees yet -- ~150KB, against removing
+  // the lazy-load penalty on the LCP element.
+  var EAGER_TILES = 3;
   var images = [];
   var progress = { loading: false, done: 0, total: 0 };
   var lastRefreshAt = null;
@@ -406,8 +416,13 @@ ${ogTags}
       var m = slice[i];
       var idx = page * PER_PAGE + i;
       var badge = m.imgCount > 1 ? '<span class="badge">' + m.imgIndex + '/' + m.imgCount + '</span>' : '';
+      // The first row is above the fold and holds the LCP element; lazy-loading
+      // it defers the very paint the metric measures. The rest stay lazy.
+      var eager = i < EAGER_TILES;
+      var loadAttr = eager ? 'loading="eager"' : 'loading="lazy"';
+      var priority = i === 0 ? ' fetchpriority="high"' : '';
       html += '<button class="tile" data-idx="' + idx + '">' +
-              '<img loading="lazy" src="/thumb/' + encodeURIComponent(m.id) + '.jpg" alt="' + esc(m.caption).slice(0, 120) + '">' +
+              '<img ' + loadAttr + priority + ' src="/thumb/' + encodeURIComponent(m.id) + '.jpg" alt="' + esc(m.caption).slice(0, 120) + '">' +
               badge + '</button>';
     }
     html += '</div>';

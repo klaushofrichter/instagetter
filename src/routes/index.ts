@@ -7,21 +7,10 @@ import { FAVICON_PNG_BASE64 } from '../assets/favicon';
 
 export const indexRouter = Router();
 
-// The site stays out of search results, but link-preview scrapers fetch
-// robots.txt before unfurling a pasted URL — without these they would ignore
-// the Open Graph tags and show a bare link. They fetch only the URL someone
-// pasted, so this is not a crawl.
-const PREVIEW_BOTS = [
-  'Slackbot-LinkExpanding',
-  'Slackbot',
-  'Twitterbot',
-  'facebookexternalhit',
-  'Discordbot',
-];
-
-const ROBOTS_TXT =
-  PREVIEW_BOTS.map((bot) => `User-agent: ${bot}\nAllow: /\n`).join('\n') +
-  '\nUser-agent: *\nDisallow: /\n';
+// The gallery is meant to be findable. It was noindex + Disallow originally;
+// that also kept Slack and X from unfurling a pasted link, since both fetch
+// robots.txt first.
+const ROBOTS_TXT = 'User-agent: *\nAllow: /\n';
 
 indexRouter.get('/robots.txt', (_req: Request, res: Response) => {
   res.status(200).type('text/plain').send(ROBOTS_TXT);
