@@ -134,8 +134,31 @@ sometimes renders a blank frame). Then:
    and prunes S3 to the newest 999 slots.
 7. `node scripts/state.js --set-cursor <oldest ISO handled>` and
    `node scripts/state.js --record <newCount> <backfillCount>`.
-8. Close the tab. Then `curl -s -X POST https://insta.klaushofrichter.net/api/refresh`
-   so the live cache picks the images up, and report what was added.
+8. Close the tab. Then tell the live cache to pick the images up:
+
+   ```bash
+   curl -fsSL -X POST https://insta.klaushofrichter.net/api/refresh \
+     -o /tmp/refresh.json -w 'refresh HTTP %{http_code}\n'
+   python3 -c "import json;d=json.load(open('/tmp/refresh.json'));print('total',d['total'],'added',d['added'],'evicted',d['evicted'])"
+   ```
+
+   Report those counts in the summary. A non-zero curl exit is a **failed
+   run** -- say so plainly rather than reporting the upload as a success.
+
+   None of those flags are decoration:
+
+   - `-f` turns a 4xx/5xx into a non-zero exit. Without it curl exits 0 and
+     prints an error page, so a broken refresh looks identical to a good one.
+     This is the one that actually catches the failure.
+   - `-L` follows the 301 the retired `insta.skylar.technology` still serves.
+     `-X POST` is what keeps it a POST across that hop -- curl would otherwise
+     downgrade a followed 301 to GET, and `GET /api/refresh` is a 404.
+   - `-o` keeps the response out of the log. The body is the entire catalog,
+     ~79KB, which is noise in every nightly run.
+
+   On 2026-09-02 this POST went to the old host with plain `-s`, got the 301,
+   and exited 0 having done nothing. 29 freshly uploaded slots stayed invisible
+   until an unrelated deploy restarted the pod.
 
 ### Scrolling the grid
 
