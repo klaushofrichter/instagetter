@@ -37,7 +37,7 @@ echo "  total image objects: $(aws s3 ls "s3://$S3_BUCKET/images/" --recursive 2
 
 echo
 echo "=== 5. what the live site is serving ==="
-curl -s https://insta.skylar.technology/api/images 2>/dev/null | python3 -c "
+curl -s https://insta.klaushofrichter.net/api/images 2>/dev/null | python3 -c "
 import json,sys
 try:
     d=json.load(sys.stdin)

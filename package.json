@@ -1,7 +1,7 @@
 {
   "name": "instagetter",
   "private": true,
-  "description": "Gallery service for insta.skylar.technology: serves Instagram images extracted to S3.",
+  "description": "Gallery service for insta.klaushofrichter.net: serves Instagram images extracted to S3.",
   "license": "MIT",
   "type": "commonjs",
   "scripts": {
@@ -14,10 +14,12 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1117.0",
+    "compression": "^1.8.1",
     "express": "^4.19.2",
     "express-rate-limit": "^8.6.2"
   },
   "devDependencies": {
+    "@types/compression": "^1.8.1",
     "@types/express": "^4.17.21",
     "@types/node": "^20.14.10",
     "@types/supertest": "^6.0.2",

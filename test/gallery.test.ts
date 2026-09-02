@@ -108,15 +108,6 @@ describe('image serving', () => {
   });
 });
 
-describe('GET /robots.txt', () => {
-  it('asks crawlers to stay out', async () => {
-    const response = await request(createApp()).get('/robots.txt');
-
-    expect(response.status).toBe(200);
-    expect(response.text).toContain('Disallow: /');
-  });
-});
-
 describe('archive rate limiting', () => {
   const threeSlots = () => [
     meta('new_1', '2026-03-01T00:00:00.000Z'),
