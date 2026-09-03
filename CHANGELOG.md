@@ -24,6 +24,13 @@ this file is where notes are written *before* a release, not an archive of them.
 
 ### Added
 
+- An end-to-end suite (Playwright, `npm run test:e2e`) covering the surface unit
+  tests cannot reach: the grid and its decoded thumbnails, pagination, the
+  lightbox, keyboard navigation, theme persistence, permalinks and the about
+  panel. It runs against a real server backed by a fake S3 serving real JPEGs,
+  so it needs no credentials and reaches no network. The CI job runs on
+  GitHub's runners rather than the in-cluster self-hosted one, where installing
+  Chromium OOM-kills the runner at its 512Mi limit.
 - `GET /health` reports the build's version alongside its status. The value is
   bare (`2026.09.03.1`) -- git tags and image tags keep the `v`, machine
   readable fields do not.

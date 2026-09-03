@@ -8,3 +8,7 @@ dist/
 *.swo
 logs/
 .claude/scheduled_tasks.lock
+
+# Playwright
+test-results/
+playwright-report/

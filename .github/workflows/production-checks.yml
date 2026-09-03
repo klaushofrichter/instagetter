@@ -35,6 +35,43 @@ jobs:
       # alerts still surface those, they just do not stop the queue.
       - run: npm audit --audit-level=high
 
+  e2e:
+    # ubuntu-latest, NOT the in-cluster self-hosted runner: installing Chromium
+    # OOM-kills it at its 512Mi limit, and GitHub reports that as "the
+    # self-hosted runner lost communication with the server" -- which reads as
+    # a network fault and sends you looking in entirely the wrong place.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - run: npm ci
+
+      # The main tsconfig only covers src/, so without this a type error in a
+      # spec or in the harness would ship as a passing suite -- playwright
+      # transpiles at run time and would not complain.
+      - run: npx tsc -p tsconfig.e2e.json
+
+      # Only the browser; --with-deps needs root and the runner image already
+      # carries the system libraries.
+      - run: npx playwright install chromium
+
+      # The suite starts its own server (playwright.config.ts webServer),
+      # backed by a fake S3 serving real JPEGs, so this needs no credentials
+      # and reaches no network.
+      - run: npm run test:e2e
+
+      - name: Upload the report when something fails
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
   codeql:
     runs-on: ubuntu-latest
     permissions:

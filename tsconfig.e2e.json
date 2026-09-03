@@ -1,0 +1,16 @@
+{
+  // The main tsconfig only includes src/, so nothing type-checks the harness
+  // or the specs. This is checked in CI rather than emitted -- playwright
+  // transpiles at run time, which would otherwise let a type error through as
+  // a passing suite.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    "types": ["node"],
+    // The specs run code inside the browser via evaluate(), so they need the
+    // DOM types the server-side config deliberately omits.
+    "lib": ["ES2022", "DOM"]
+  },
+  "include": ["e2e", "playwright.config.ts"]
+}
