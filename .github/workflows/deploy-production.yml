@@ -48,8 +48,15 @@ jobs:
           DATE=$(TZ=America/Chicago date +%Y.%m.%d)
           # Same-day counter, derived from the releases that already exist —
           # the tags are the state, so nothing needs storing.
-          TODAY=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 200 \
-                    --json tagName -q '.[].tagName' | grep -c "^v${DATE}\." || true)
+          # Split deliberately: with the whole pipeline under `|| true`, a gh
+          # failure (rate limit, API blip) is indistinguishable from "no
+          # releases today" -- TODAY becomes 0, the counter resets to .1, and
+          # an already-published image tag gets overwritten with different
+          # code. `set -e` fails the step on a gh error instead; `|| true`
+          # stays on grep alone, where no matches is a legitimate zero.
+          RELEASES=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 200 \
+                       --json tagName -q '.[].tagName')
+          TODAY=$(printf '%s\n' "$RELEASES" | grep -c "^v${DATE}\." || true)
           VERSION="${DATE}.$((TODAY + 1))"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Releasing v$VERSION"
@@ -69,7 +76,7 @@ jobs:
           # latest is published here rather than from main, so that pulling it
           # gives what is actually deployed rather than an untested build.
           build-args: |
-            APP_VERSION=v${{ steps.ver.outputs.version }}
+            APP_VERSION=${{ steps.ver.outputs.version }}
           tags: |
             ghcr.io/klaushofrichter/instagetter:${{ github.sha }}
             ghcr.io/klaushofrichter/instagetter:v${{ steps.ver.outputs.version }}
@@ -151,14 +158,38 @@ jobs:
           echo "Released $TAG"
 
       - name: Smoke-test the public endpoints
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
         run: |
           set -euo pipefail
+          # Poll for the version this run stamped, not merely for a 200.
+          # Knative ingress can answer from the PREVIOUS revision for a moment
+          # after the ksvc reports Ready, so a 200 alone lets a deploy pass
+          # without the new build ever serving traffic.
+          served=""
           for i in $(seq 1 10); do
-            code=$(curl -s -o /dev/null -w "%{http_code}" https://insta.klaushofrichter.net/health || true)
-            [ "$code" = "200" ] && echo "health ok" && break
-            echo "health not ready (HTTP ${code}), retry ${i}/10"; sleep 6
+            code=$(curl -s -o /tmp/health.json -w "%{http_code}" https://insta.klaushofrichter.net/health || true)
+            if [ "$code" = "200" ]; then
+              # Whitespace-tolerant on purpose: express emits no spaces, but
+              # pinning the extraction to exact JSON byte spacing would break
+              # silently if anything ever reformatted the body.
+              served=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+                         /tmp/health.json | head -1 || true)
+              if [ "$served" = "$VERSION" ]; then
+                echo "health ok, serving ${served}"
+                break
+              fi
+              echo "health 200 but serving '${served}', want '${VERSION}', retry ${i}/10"
+            else
+              echo "health not ready (HTTP ${code}), retry ${i}/10"
+            fi
+            sleep 6
           done
           [ "$code" = "200" ] || { echo "::error::/health did not return 200"; exit 1; }
+          [ "$served" = "$VERSION" ] || {
+            echo "::error::/health reports '${served}', expected '${VERSION}' — ingress is still on the old revision"
+            exit 1
+          }
           page=$(curl -s -o /dev/null -w "%{http_code}" https://insta.klaushofrichter.net/)
           [ "$page" = "200" ] || { echo "::error::public page returned ${page}"; exit 1; }
           echo "public page ok"
