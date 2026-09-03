@@ -60,8 +60,13 @@ entirely inside the page.
 npm install
 cp .env.example .env        # then fill in the values
 npm run dev                 # http://localhost:8080
-npm test
+npm test                    # unit tests (vitest)
+npm run test:e2e            # browser tests (playwright)
 ```
+
+`test:e2e` starts its own server against a fake S3 that serves real JPEGs, so
+it needs no credentials and reaches no network. First run locally:
+`npx playwright install chromium`.
 
 The server refuses to start if required configuration is missing, so a
 misconfigured deploy fails immediately rather than serving errors.

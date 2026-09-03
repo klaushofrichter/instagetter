@@ -173,6 +173,41 @@ Note when measuring this in a browser: Chrome clamps timers to 1000ms in a
 hidden tab, so a scripted `setInterval` "scrub" silently runs at 1/s and takes
 the immediate path. Use a synchronous busy-wait to get real spacing.
 
+### End-to-end tests
+
+`npm run test:e2e` (Playwright, `e2e/`). Unit tests reach `createApp()`; these
+reach the parts only a browser has -- the grid, the lightbox, keyboard
+navigation, theme persistence, permalinks.
+
+Two things make the suite hermetic, and both matter:
+
+- `e2e/server.ts` starts a **real** server with `setClient()` pointed at a fake
+  S3 -- the same seam `test/fakeS3.ts` uses, except the bodies are genuine
+  sharp-encoded JPEGs rather than 3-byte stubs. A browser has to decode them
+  for any of this to mean anything, and each slot gets a distinct colour so a
+  test can tell "the image changed" from "the previous bitmap is still up".
+- It warms before announcing readiness, so specs never race the staged
+  warm-up. Startup ordering has unit coverage in `test/cache.test.ts`; mixing
+  the two only makes the browser suite flaky.
+
+**The CI job must run on GitHub's runners, never the in-cluster self-hosted
+one.** Installing Chromium OOM-kills it at its 512Mi limit, and GitHub reports
+that as *"the self-hosted runner lost communication with the server"* -- which
+reads as a network fault and sends you looking in the wrong place entirely.
+
+`tsconfig.e2e.json` exists because the main config only includes `src`. Without
+it, a type error in a spec or in the harness ships as a passing suite, since
+Playwright transpiles at run time and never complains.
+
+Two app behaviours the specs pin down, both of which I got wrong first by
+assuming rather than reading:
+
+- `step()` **wraps**: arrow-left from the first slot goes to the last.
+- Every navigation route shares one 334ms gate (`STEP_MIN_MS`). Back-to-back
+  synthetic key presses are silently swallowed, so a spec that does not wait
+  asserts on a step that never happened. The gate is what keeps a held arrow
+  key under the server's per-IP archive budget, so it has a test of its own.
+
 ## CI/CD
 
 - `build-push.yml` — push to `main`: tests, then publish

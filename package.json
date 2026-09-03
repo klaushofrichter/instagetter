@@ -10,7 +10,8 @@
     "dev": "tsx --env-file=.env src/server.ts",
     "test": "vitest run",
     "upload": "node scripts/upload-to-s3.js",
-    "known-ids": "node scripts/known-ids.js"
+    "known-ids": "node scripts/known-ids.js",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1121.0",
@@ -19,6 +20,7 @@
     "express-rate-limit": "^8.7.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@types/compression": "^1.8.1",
     "@types/express": "^5.0.6",
     "@types/node": "^24.13.3",
