@@ -275,6 +275,31 @@ under `## [Unreleased]` in `CHANGELOG.md`. The release step runs after
 `Verify rollout`, so a failed deploy produces no release, and the checkout uses
 `fetch-depth: 0` because the notes are computed from history and tags.
 
+#### The version has to identify what is running
+
+Three things keep that true, and each fixes a way it silently stopped being
+true (issue #56):
+
+- The same-day counter comes from `gh release list`, and that call is **not**
+  under `|| true`. It used to be, wrapped around the whole
+  `gh ... | grep -c` pipeline, which made an API failure look exactly like "no
+  releases today": the counter reset to `.1`, and because the image is built
+  and pushed before the release guard runs, an already-published tag was
+  overwritten with different code. Only the `grep` may return zero now.
+- `GET /health` reports the version, so the running container can be asked what
+  it is. The value is **bare** (`2026.09.03.1`); the `v` belongs to git tags and
+  image tags only, and `appVersion()` strips a leading one so an image built
+  before the build-arg dropped it still reports bare.
+- The smoke test polls until the version `/health` serves equals the one that
+  run stamped. Knative ingress can answer from the **previous** revision for a
+  moment after the ksvc reports Ready, so asserting HTTP 200 alone let a deploy
+  report success without the new build ever serving traffic.
+
+The cluster-wide rules these follow live in `kube-setup`,
+`docs/repository-baseline.md` and `docs/cluster-deployment-requirements.md` --
+those are the source of truth when they and this file disagree. Changing the
+deploy or PR-check workflows means saying so there, or the docs drift.
+
 `latest` deliberately follows `production`, not `main`. It previously tracked
 `main`, which meant pulling `latest` gave a build that had never been deployed.
 

@@ -95,7 +95,7 @@ misconfigured deploy fails immediately rather than serving errors.
 | `GET /thumb/:id.jpg` | public | grid thumbnail (~640px) |
 | `GET /image/:id.jpg` | public | full-resolution image |
 | `GET /download/:id.jpg` | public | same, as a file download |
-| `GET /health` | public | readiness probe |
+| `GET /health` | public | readiness probe; reports `{"status":"ok","version":"…"}` |
 | `GET /robots.txt` | public | disallow all |
 | `GET /api/status` | bearer token | placeholder for future API |
 

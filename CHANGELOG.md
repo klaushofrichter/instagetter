@@ -13,6 +13,25 @@ this file is where notes are written *before* a release, not an archive of them.
      notes. Keep prose out of it unless you mean it to be published. -->
 ## [Unreleased]
 
+### Fixed
+
+- The deploy could reuse a version that had already shipped. The same-day
+  release counter ran the whole `gh release list | grep -c` pipeline under
+  `|| true`, so a `gh` API failure was indistinguishable from "no releases
+  today": the counter reset to `.1` and the image tag for an existing release
+  was overwritten with different code. The `gh` call and the `grep` are now
+  separate, so only "no matches" is allowed to be zero.
+
+### Added
+
+- `GET /health` reports the build's version alongside its status. The value is
+  bare (`2026.09.03.1`) -- git tags and image tags keep the `v`, machine
+  readable fields do not.
+- The deploy smoke test now polls until the version `/health` serves is the one
+  that run stamped. Knative ingress can answer from the previous revision for a
+  moment after the ksvc reports Ready, so asserting only HTTP 200 let a deploy
+  pass without the new build ever serving traffic.
+
 ### Changed
 
 - Express 4 -> 5. No behaviour change intended: the route patterns, the
