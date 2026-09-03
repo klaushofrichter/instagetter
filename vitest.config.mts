@@ -7,5 +7,10 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     setupFiles: ['./test/setup.ts'],
+    // Scoped to test/ on purpose. Vitest's default glob is
+    // **/*.{test,spec}.ts, which swallows the playwright specs in e2e/ --
+    // they import @playwright/test, register no vitest tests, and fail the
+    // file as "0 test". The two suites are run by different runners.
+    include: ['test/**/*.test.ts'],
   },
 });
