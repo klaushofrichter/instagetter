@@ -15,6 +15,20 @@ this file is where notes are written *before* a release, not an archive of them.
 
 ### Fixed
 
+- The archive and refresh limiters keyed on the exact `req.ip`, so an IPv6
+  client with a routed prefix could walk addresses for a fresh budget on every
+  request. Both now key on the /64 via `ipKeyGenerator`, the same normalisation
+  `express-rate-limit` applies in its own default -- which is why the limiters
+  built on that package were already covered and the two hand-written ones
+  were not.
+- Both limiters' per-IP maps could grow without bound. The refresh limiter
+  never pruned at all; the archive limiter pruned only by age, which cannot
+  bound the map when addresses arrive faster than they expire -- exactly the
+  flood a cap exists for. Both now evict least-recently-seen entries once over
+  1000, so the bound holds regardless of arrival rate.
+
+### Fixed
+
 - Per-IP rate limiting was effectively one global bucket. `trust proxy` was set
   to `1`, but the ingress path is traefik -> kourier/envoy -> queue-proxy, so
   express stopped walking `X-Forwarded-For` early and `req.ip` resolved to an
