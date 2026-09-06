@@ -134,6 +134,38 @@ What actually changes is the abuse surface: before, a client could only ever
 pull the 99 local files: bounded and free. `browseRateLimit` is now the thing
 holding that line.
 
+### Who a request is from
+
+Every limiter keys on the caller, so two things have to be right or all of them
+degrade together (issue #59).
+
+**`trust proxy` is a CIDR list, not a hop count.** The ingress path is
+traefik -> kourier/envoy -> queue-proxy -> app. `trust proxy: 1` stopped
+walking `X-Forwarded-For` after one hop and returned an in-cluster `10.42.x`
+address, so *every* caller shared one bucket -- browse, archive and refresh as
+much as `/api`, since all four key on `req.ip`. A number is only right for
+today's topology and fails silently when a hop moves: it still returns an
+address, just the wrong one.
+
+The list is the k3s pod/service ranges rather than express's `uniquelocal`
+shorthand, deliberately: `uniquelocal` trusts all of RFC1918 including the
+house LAN, and a trusted hop's `X-Forwarded-For` is believed, so a LAN client
+could forge its apparent address. `TRUSTED_PROXIES` overrides it if the
+cluster is renumbered.
+
+**The API limiter keys on the token, but only after it validates.** Keying on
+the raw `Bearer` value would give every invented string a fresh budget, so an
+attacker varying the header per request would never be limited at all -- the
+limiter switches itself off for exactly the traffic it exists to stop. Invalid
+and absent tokens fall back to the IP bucket. `isValidToken()` is shared with
+`requireToken` so the two cannot drift apart; the token is hashed so the
+credential never becomes an in-memory key.
+
+`GET /api/status` reports `clientIp` because none of the above is observable
+otherwise. A `10.42.x` or `10.43.x` value there means the resolution is wrong
+again and every bucket has quietly merged. It is token-gated, and only ever
+echoes the caller's own address back to it.
+
 ### Why index.json
 
 A refresh is one GET of `index.json` rather than one per slot. The upload script

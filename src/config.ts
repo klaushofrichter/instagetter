@@ -27,3 +27,21 @@ export function appVersion(): string {
   if (!raw) return 'dev';
   return raw.replace(/^v(?=\d)/, '');
 }
+
+// Hops whose X-Forwarded-For is believed. Defaults to loopback plus the k3s
+// pod and service ranges, which is the ingress path
+// traefik -> kourier/envoy -> queue-proxy -> app. Override with
+// TRUSTED_PROXIES (comma separated) if the cluster is ever renumbered; a
+// wrong value here is not loud, it just silently mis-attributes every
+// rate-limit bucket.
+const DEFAULT_TRUSTED_PROXIES = ['loopback', '10.42.0.0/16', '10.43.0.0/16'];
+
+export function trustedProxies(): string[] {
+  const raw = (process.env.TRUSTED_PROXIES ?? '').trim();
+  if (!raw) return DEFAULT_TRUSTED_PROXIES;
+  const entries = raw
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+  return entries.length > 0 ? entries : DEFAULT_TRUSTED_PROXIES;
+}

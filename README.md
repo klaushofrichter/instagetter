@@ -82,6 +82,7 @@ misconfigured deploy fails immediately rather than serving errors.
 | `CACHE_DIR` | no | Local image cache (default `/tmp/instagetter-cache`). |
 | `CACHE_LIMIT` | no | Full images held on disk, newest first (default `99`). Thumbnails are always cached in full. |
 | `REFRESH_MIN_INTERVAL_MS` | no | Server-enforced gap between refreshes (default `5000`). |
+| `TRUSTED_PROXIES` | no | Comma-separated hops whose `X-Forwarded-For` is trusted (default `loopback,10.42.0.0/16,10.43.0.0/16`). Wrong values silently mis-attribute every per-IP limit. |
 | `BROWSE_RATE_LIMIT` | no | Page/image requests per minute per IP (default `600`). |
 | `ARCHIVE_RATE_LIMIT` | no | Per minute per IP, counting only full images not on disk, i.e. those fetched from S3 (default `120`). |
 | `ARCHIVE_RATE_WINDOW_MS` | no | Window for `ARCHIVE_RATE_LIMIT` (default `60000`). |
