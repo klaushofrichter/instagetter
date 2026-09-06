@@ -47,6 +47,12 @@ function prune(now: number, windowMs: number): void {
  * 334ms step floor caps a held arrow key near 180/min -- while bounding S3
  * egress to roughly 39MB/min per IP.
  */
+// Counts in memory, in this process. That is only authoritative because
+// kube-setup's `manifests/insta/insta-ksvc.yaml` pins min-scale/max-scale to
+// 1: with more replicas each keeps its own counter and every caller's real
+// allowance becomes N x the limit, silently. A shared store is required before
+// the replica count goes up. `replicaWarning()` in config.ts logs this at
+// startup, since the annotation lives in a different repo from this file.
 export function archiveRateLimit(req: Request, res: Response, next: NextFunction): void {
   // Express 5 widens route params to `string | string[]`; an unexpected shape
   // is not something this budget should try to price, and the route handler

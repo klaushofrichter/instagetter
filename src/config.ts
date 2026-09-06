@@ -45,3 +45,41 @@ export function trustedProxies(): string[] {
     .filter((entry) => entry.length > 0);
   return entries.length > 0 ? entries : DEFAULT_TRUSTED_PROXIES;
 }
+
+// Every rate limiter in this service counts in memory, in one process. That is
+// only authoritative while exactly one replica is running, which is not a
+// property of this repo at all -- it comes from
+// `manifests/insta/insta-ksvc.yaml` in kube-setup pinning
+// autoscaling.knative.dev/min-scale and max-scale to 1.
+//
+// Scale that out and each replica keeps its own counters, so a caller's real
+// allowance silently becomes N x the configured limit. Nothing errors; the
+// limits just quietly stop meaning what they say. The annotation lives in
+// another repo from the limiter, so whoever changes it has no reason to look
+// here -- hence this check, which turns a silent degradation into a line in
+// the log.
+//
+// MAX_SCALE is named after the annotation it mirrors so the two are obviously
+// the same knob.
+export function replicaWarning(): string | null {
+  const raw = (process.env.MAX_SCALE ?? '').trim();
+  if (!raw) {
+    return (
+      'MAX_SCALE is not set, so the replica count cannot be checked. Rate ' +
+      'limits count in memory per process and are only correct at one ' +
+      'replica; see autoscaling.knative.dev/max-scale in kube-setup.'
+    );
+  }
+  const count = Number(raw);
+  if (!Number.isFinite(count) || count < 1) {
+    return `MAX_SCALE is "${raw}", which is not a replica count. Rate limits assume exactly 1.`;
+  }
+  if (count > 1) {
+    return (
+      `MAX_SCALE is ${count}, but rate limits count in memory per process: ` +
+      `every caller's real allowance is now ${count}x the configured limit. ` +
+      'A shared store is required before running more than one replica.'
+    );
+  }
+  return null;
+}
