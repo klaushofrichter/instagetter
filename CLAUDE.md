@@ -166,6 +166,27 @@ otherwise. A `10.42.x` or `10.43.x` value there means the resolution is wrong
 again and every bucket has quietly merged. It is token-gated, and only ever
 echoes the caller's own address back to it.
 
+#### Two things every hand-written limiter here has to get right
+
+`browseRateLimit` and `authRateLimit` are built on `express-rate-limit` and
+inherit both of these from it. `archiveRateLimit` and `refreshRateLimit` are
+hand-written, which is why they were the two that got them wrong.
+
+- **Key on the /64, not the address.** An IPv6 subscriber owns every address in
+  its routed prefix, so keying on the exact `req.ip` lets it take a fresh
+  budget per request and never be limited. `clientKey()` wraps
+  `ipKeyGenerator` for this; `req.ip` looks obviously right and is the trap.
+- **Bound the map, and not only by age.** The key space is every IP that ever
+  asks. Pruning expired entries is not enough on its own: under enough distinct
+  addresses inside one window, nothing is old enough to drop and the map grows
+  anyway -- which is precisely the flood the cap is for. Both limiters evict
+  least-recently-seen above 1000. That lets an evicted caller start early, a
+  deliberate trade against unbounded memory during traffic that is already
+  abusive.
+
+The second was found by mutation-testing the first attempt: the test passed
+with the prune deleted, because it only ever created 400 distinct addresses.
+
 #### The limits are only real at one replica
 
 Every limiter counts **in memory, in one process**. That is correct only

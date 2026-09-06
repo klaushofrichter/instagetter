@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { isLocalImage } from '../cache';
+import { clientKey } from './clientKey';
 
 /** Read per call so the budget is configurable at runtime and testable. */
 export function archiveWindowMs(): number {
@@ -17,16 +18,36 @@ export function resetArchiveLimiter(): void {
   hitsByIp.clear();
 }
 
+/** Exposed so a test can assert the map is bounded, not merely responsive. */
+export function trackedIpCount(): number {
+  return hitsByIp.size;
+}
+
 /**
  * The endpoint is public, so the key space is every IP that ever asks. Drop
  * entries whose hits have all aged out, rather than letting the map grow for
  * the life of the process.
  */
+const MAX_TRACKED_IPS = 1000;
+
 function prune(now: number, windowMs: number): void {
   for (const [ip, hits] of hitsByIp) {
     if (hits.length === 0 || now - hits[hits.length - 1] >= windowMs) {
       hitsByIp.delete(ip);
     }
+  }
+  if (hitsByIp.size <= MAX_TRACKED_IPS) return;
+
+  // Age alone does not bound this: enough distinct addresses inside one window
+  // and nothing is old enough to drop, so the map grows regardless -- which is
+  // the shape of the flood the cap exists for. Evict least-recently-seen until
+  // it fits. Those callers get a fresh budget early, which is the right trade
+  // against unbounded memory during traffic that is already abusive.
+  const oldestFirst = [...hitsByIp.entries()].sort(
+    (a, b) => a[1][a[1].length - 1] - b[1][b[1].length - 1],
+  );
+  for (const [ip] of oldestFirst.slice(0, hitsByIp.size - MAX_TRACKED_IPS)) {
+    hitsByIp.delete(ip);
   }
 }
 
@@ -63,7 +84,7 @@ export function archiveRateLimit(req: Request, res: Response, next: NextFunction
     return;
   }
 
-  const ip = req.ip ?? 'unknown';
+  const ip = clientKey(req);
   const now = Date.now();
   const windowMs = archiveWindowMs();
   const recent = (hitsByIp.get(ip) ?? []).filter((t) => now - t < windowMs);
@@ -78,6 +99,6 @@ export function archiveRateLimit(req: Request, res: Response, next: NextFunction
 
   recent.push(now);
   hitsByIp.set(ip, recent);
-  if (hitsByIp.size > 1000) prune(now, windowMs);
+  if (hitsByIp.size > MAX_TRACKED_IPS) prune(now, windowMs);
   next();
 }
