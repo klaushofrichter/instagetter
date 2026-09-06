@@ -166,6 +166,33 @@ otherwise. A `10.42.x` or `10.43.x` value there means the resolution is wrong
 again and every bucket has quietly merged. It is token-gated, and only ever
 echoes the caller's own address back to it.
 
+#### The limits are only real at one replica
+
+Every limiter counts **in memory, in one process**. That is correct only
+because `manifests/insta/insta-ksvc.yaml` in `kube-setup` pins
+`autoscaling.knative.dev/min-scale` and `max-scale` to `1`.
+
+Raise it and each replica keeps its own counters, so a caller's real allowance
+silently becomes N x the configured limit. Nothing errors -- the limits simply
+stop meaning what they say. **A shared store has to land before the replica
+count goes up, not after.**
+
+The trap is that the annotation lives in a different repo from the limiter, so
+whoever scales it out has no reason to read this file, and whoever edits a
+limiter here has no reason to look at the manifest. Three things push against
+that, because a comment nobody reads is not a control:
+
+- each of the four limiters carries the constraint in a comment, where someone
+  changing one will see it
+- this section names the manifest, so the other half is findable
+- `replicaWarning()` logs at startup when `MAX_SCALE` is missing, unparseable
+  or `> 1` -- the only one of the three that actually *fires*
+
+`MAX_SCALE` is named after the annotation it mirrors. It has to be passed
+through from the manifest; when it is absent the warning says so rather than
+staying quiet, because silence would be indistinguishable from "checked, and
+it is 1".
+
 ### Why index.json
 
 A refresh is one GET of `index.json` rather than one per slot. The upload script

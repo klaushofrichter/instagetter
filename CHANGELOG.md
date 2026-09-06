@@ -29,6 +29,12 @@ this file is where notes are written *before* a release, not an archive of them.
 
 ### Added
 
+- The service warns at startup when the replica count is missing or greater
+  than one. Every rate limiter counts in memory per process, so the limits are
+  only correct at a single replica -- a fact that lived entirely in the ksvc
+  manifest in another repo. Scaling out silently multiplied every caller's
+  allowance rather than failing. The constraint is now also on each limiter and
+  in `CLAUDE.md`, but `MAX_SCALE` is the part that actually fires.
 - `GET /api/status` reports `clientIp`, the resolved caller address, so a wrong
   `trust proxy` setting is observable instead of silent.
 - `TRUSTED_PROXIES` overrides the trusted hop ranges if the cluster is

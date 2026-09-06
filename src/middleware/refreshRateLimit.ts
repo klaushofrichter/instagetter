@@ -13,6 +13,12 @@ export function resetRefreshLimiter(): void {
  * Server-enforced companion to the disabled-button in the UI: a client that
  * ignores the button state still cannot hammer S3.
  */
+// Counts in memory, in this process. That is only authoritative because
+// kube-setup's `manifests/insta/insta-ksvc.yaml` pins min-scale/max-scale to
+// 1: with more replicas each keeps its own counter and every caller's real
+// allowance becomes N x the limit, silently. A shared store is required before
+// the replica count goes up. `replicaWarning()` in config.ts logs this at
+// startup, since the annotation lives in a different repo from this file.
 export function refreshRateLimit(req: Request, res: Response, next: NextFunction): void {
   const ip = req.ip ?? 'unknown';
   const now = Date.now();

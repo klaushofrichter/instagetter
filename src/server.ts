@@ -1,8 +1,13 @@
 import { createApp } from './app';
-import { assertRequiredEnv } from './config';
+import { assertRequiredEnv, replicaWarning } from './config';
 import { refresh } from './cache';
 
 assertRequiredEnv();
+
+// Loud on purpose. The rate limiters count in memory, so more than one
+// replica multiplies every caller's allowance without anything failing.
+const warning = replicaWarning();
+if (warning) console.warn(`rate limiting: ${warning}`);
 
 const port = Number(process.env.PORT) || 8080;
 const app = createApp();

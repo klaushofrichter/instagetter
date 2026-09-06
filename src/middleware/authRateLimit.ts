@@ -24,6 +24,12 @@ import { bearerToken, isValidToken } from './requireToken';
  * The token is hashed so the raw credential never becomes an in-memory key or
  * turns up in diagnostics that print one.
  */
+// Counts in memory, in this process. That is only authoritative because
+// kube-setup's `manifests/insta/insta-ksvc.yaml` pins min-scale/max-scale to
+// 1: with more replicas each keeps its own counter and every caller's real
+// allowance becomes N x the limit, silently. A shared store is required before
+// the replica count goes up. `replicaWarning()` in config.ts logs this at
+// startup, since the annotation lives in a different repo from this file.
 export function createAuthRateLimit(envVarName = 'INSTA_API_TOKENS'): RateLimitRequestHandler {
   return rateLimit({
     windowMs: 15 * 60 * 1000,
