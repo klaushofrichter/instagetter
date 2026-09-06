@@ -15,6 +15,27 @@ this file is where notes are written *before* a release, not an archive of them.
 
 ### Fixed
 
+- Per-IP rate limiting was effectively one global bucket. `trust proxy` was set
+  to `1`, but the ingress path is traefik -> kourier/envoy -> queue-proxy, so
+  express stopped walking `X-Forwarded-For` early and `req.ip` resolved to an
+  in-cluster address. All four limiters key on it, so browsing, archive images
+  and refresh were affected as much as the API. It is now a CIDR list, which is
+  independent of how many hops there are.
+- The API limiter no longer lets unauthenticated traffic spend an
+  authenticated caller's budget: it keys on the bearer token once that token
+  has validated, falling back to the IP for absent or invalid ones. The
+  fallback is the point -- keying on the raw header value would give every
+  invented token a fresh budget and never limit an attacker who varies it.
+
+### Added
+
+- `GET /api/status` reports `clientIp`, the resolved caller address, so a wrong
+  `trust proxy` setting is observable instead of silent.
+- `TRUSTED_PROXIES` overrides the trusted hop ranges if the cluster is
+  renumbered.
+
+### Fixed
+
 - The deploy could reuse a version that had already shipped. The same-day
   release counter ran the whole `gh release list | grep -c` pipeline under
   `|| true`, so a `gh` API failure was indistinguishable from "no releases

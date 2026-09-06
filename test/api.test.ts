@@ -24,6 +24,9 @@ describe('GET /api/status', () => {
       .set('Authorization', 'Bearer test-api-token');
 
     expect(response.status).toBe(200);
-    expect(response.body).toEqual({ service: 'instagetter', authenticated: true });
+    expect(response.body).toMatchObject({ service: 'instagetter', authenticated: true });
+    // The resolved caller address, reported so a wrong trust-proxy setting is
+    // observable rather than silent. See test/trustProxy.test.ts.
+    expect(typeof response.body.clientIp).toBe('string');
   });
 });
