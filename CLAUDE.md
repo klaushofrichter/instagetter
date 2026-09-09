@@ -517,6 +517,33 @@ The run needs Chrome open and logged in. If the machine is asleep the night is
 simply missed, which is harmless: the cursor in `state.json` means the next run
 resumes exactly where it stopped.
 
+### The blank grey frame is a paint problem, not a broken post
+
+The image does not paint until something forces a capture. A probe reads
+`naturalWidth: 0` and the page shows an empty frame with caption, location and
+comments all present -- which looks exactly like unfetchable media and is not.
+
+**Screenshot, then probe.** Measured 2026-09-09 on `CXrI_iouoA8`: probe found
+0 images, screenshot taken, identical probe found the photo at 1440x1440.
+
+Waiting longer is not a substitute and is actively misleading, because the tab
+is backgrounded and timers are clamped hard -- a loop bounded at 6000ms took
+**32981ms**. That is why the nightly's 15s-then-25s retry on 2026-09-06 failed
+twice and recorded `CZC_Srmujl2` and `CXrI_iouoA8` as "genuinely unfetchable".
+Both are fine; they were re-extracted by hand on 2026-09-09 and are in S3 now.
+
+Two related traps, both in `SKILL.md`:
+
+- Scoping the query to `article img` finds nothing even after a capture, since
+  many post pages have no `<article>` element at all.
+- The post's own images have an **empty** `alt`. Images with descriptive alt
+  text on the same page belong to *other* posts in the surrounding feed, so
+  filtering on alt does not fail -- it silently stores the wrong photo.
+
+`state.js --unskip <shortcode>` reverses a skip recorded in error. Note it does
+not by itself recover the post: backfill only walks **older** than the cursor,
+so a shortcode newer than `backfillCursor` needs a targeted extraction.
+
 ### Carousels: always use ?img_index=N
 
 Fetch each carousel slide by URL — `https://www.instagram.com/p/<code>/?img_index=<n>`

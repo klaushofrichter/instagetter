@@ -123,8 +123,24 @@ Navigate to `https://www.instagram.com/p/<shortcode>/?img_index=<n>` — always
 with the index, even for a single image (see the carousel section: the bare URL
 sometimes renders a blank frame). Then:
 
-1. Poll for the main image rather than sleeping a fixed time. **Use this
-   selector — do not write your own.**
+1. **Take a screenshot first. This is not optional.** The image does not paint
+   until something forces a capture: `naturalWidth` stays `0` and the page
+   shows the blank grey frame no matter how long you wait. Confirmed on
+   2026-09-09 — a probe found `0` images, a screenshot was taken, the identical
+   probe then found the photo at 1440x1440.
+
+   Longer waits do **not** substitute. The tab is backgrounded, so timers are
+   clamped hard: a loop bounded at 6000ms took **32981ms** to finish. That is
+   why the 15s-then-25s retry on 2026-09-06 failed twice and declared two
+   perfectly good posts unfetchable. Sequence per slide, always:
+
+   ```
+   navigate ?img_index=N  ->  screenshot  ->  probe + download
+   ```
+
+   `browser_batch` does this in one round trip.
+
+2. Then find the image. **Use this selector — do not write your own.**
 
    ```js
    // The post's own photo: a large image whose alt is EMPTY.
@@ -137,11 +153,9 @@ sometimes renders a blank frame). Then:
 
    - **Never scope to `article`.** Many post pages have **no `<article>`
      element at all** — `document.querySelectorAll('article img').length` is
-     `0` while plain `img` returns the photo at full resolution instantly. On
-     2026-09-06 a probe scoped that way polled an empty set for 15s, retried
-     for 25s, and recorded `CZC_Srmujl2` and `CXrI_iouoA8` as "genuinely
-     unfetchable". Both render fine; the images were never missing. `main` is
-     present where `article` is not, but there is no reason to scope at all.
+     `0` while plain `img` returns the photo. `main` is present where `article`
+     is not, but there is no reason to scope at all. This compounds the paint
+     problem above: a scoped selector finds nothing even after a capture.
    - **Never match on alt text.** The post's own images have an **empty**
      `alt`; the images on the same page carrying descriptive alt text belong to
      *other* posts in the surrounding feed. Filtering for non-empty alt does
@@ -149,13 +163,18 @@ sometimes renders a blank frame). Then:
 
    If this selector finds nothing after ~15s, the post genuinely has no image:
    check for a video before recording a skip.
-2. Read metadata: caption from `og:title`, `takenAt` from `time[datetime]`,
+3. Read metadata: caption from `og:title`, `takenAt` from `time[datetime]`,
    likes/comments from `og:description`, location from the body text — skipping
    an `AI content` badge if present.
-3. In-page: `fetch(img.currentSrc)` -> blob -> anchor with
-   `download="<shortcode>_<NN>.jpg"` -> click.
-4. Repeat for each slide until the image bytes repeat, or the dot count is
-   reached.
+4. In-page: `fetch(img.currentSrc)` -> blob -> anchor with
+   `download="<shortcode>_<NN>.jpg"` -> click. Do the whole thing in-page and
+   return only name/size/dimensions: CDN URLs carry auth query strings, and a
+   tool result containing one is blocked outright.
+5. Repeat for each slide until the image bytes repeat, or the dot count is
+   reached. **Pick the on-screen slide only** — a carousel keeps neighbours in
+   the DOM, so filter candidates by `getBoundingClientRect()` falling inside
+   the viewport, or you will download the same neighbour repeatedly. Distinct
+   byte sizes across slides are the cheap check that this worked.
 
 ### Finishing
 
