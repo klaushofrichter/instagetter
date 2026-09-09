@@ -104,13 +104,51 @@ node scripts/state.js --skip <shortcode>
 Do the same for any post whose image genuinely cannot be fetched after trying
 `?img_index=1`. Never let a skip pass silently as a success.
 
+**Before recording a skip, confirm it is really unfetchable.** A skip means
+"this cannot be got", not "this run could not get it" — and the difference has
+been wrong before. Check `document.querySelectorAll('video').length` and
+`og:video`; a post with neither, and with a large empty-alt `img` present, is a
+probe bug rather than an unfetchable post. Use the selector in **Extracting one
+post** and never a hand-written variant.
+
+A skip is reversible, and correcting one should not mean editing S3 by hand:
+
+```bash
+node scripts/state.js --unskip <shortcode>
+```
+
 ### Extracting one post
 
 Navigate to `https://www.instagram.com/p/<shortcode>/?img_index=<n>` — always
 with the index, even for a single image (see the carousel section: the bare URL
 sometimes renders a blank frame). Then:
 
-1. Poll for the main image rather than sleeping a fixed time.
+1. Poll for the main image rather than sleeping a fixed time. **Use this
+   selector — do not write your own.**
+
+   ```js
+   // The post's own photo: a large image whose alt is EMPTY.
+   const findPostImages = () =>
+     [...document.querySelectorAll('img')]
+       .filter((i) => i.naturalWidth > 600 && (i.alt || '') === '');
+   ```
+
+   Two traps, both of which have already cost real posts:
+
+   - **Never scope to `article`.** Many post pages have **no `<article>`
+     element at all** — `document.querySelectorAll('article img').length` is
+     `0` while plain `img` returns the photo at full resolution instantly. On
+     2026-09-06 a probe scoped that way polled an empty set for 15s, retried
+     for 25s, and recorded `CZC_Srmujl2` and `CXrI_iouoA8` as "genuinely
+     unfetchable". Both render fine; the images were never missing. `main` is
+     present where `article` is not, but there is no reason to scope at all.
+   - **Never match on alt text.** The post's own images have an **empty**
+     `alt`; the images on the same page carrying descriptive alt text belong to
+     *other* posts in the surrounding feed. Filtering for non-empty alt does
+     not fail — it silently grabs someone else's photo, which is worse.
+
+   If this selector finds nothing after ~15s, the post genuinely has no image:
+   check for a video before recording a skip.
 2. Read metadata: caption from `og:title`, `takenAt` from `time[datetime]`,
    likes/comments from `og:description`, location from the body text — skipping
    an `AI content` badge if present.

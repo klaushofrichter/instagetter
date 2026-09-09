@@ -4,7 +4,8 @@
  *
  *   node scripts/state.js                       # print current state
  *   node scripts/state.js --set-cursor <ISO>    # move the backfill cursor older
- *   node scripts/state.js --skip <shortcode>    # never attempt this post again
+ *   node scripts/state.js --skip <shortcode>    # do not attempt this post again
+ *   node scripts/state.js --unskip <shortcode>  # let backfill try it once more
  *   node scripts/state.js --record <n> <m>      # note counts for the last run
  *
  * --record also stamps lastRunSource from INSTAGETTER_RUN_SOURCE (the cron
@@ -59,6 +60,14 @@ async function main() {
     await putJson('state.json', state);
   } else if (args[0] === '--skip') {
     if (!state.skipped.includes(args[1])) state.skipped.push(args[1]);
+    await putJson('state.json', state);
+  } else if (args[0] === '--unskip') {
+    // A skip records "this run could not get it", which is not always the same
+    // as "this cannot be got". Two posts were skipped in 2026-09 by a probe
+    // scoped to `article img` on pages that have no <article> element; the
+    // images were there the whole time. Without this, correcting that meant
+    // hand-editing state.json in S3.
+    state.skipped = state.skipped.filter((code) => code !== args[1]);
     await putJson('state.json', state);
   } else if (args[0] === '--record') {
     state.lastRun = new Date().toISOString();
