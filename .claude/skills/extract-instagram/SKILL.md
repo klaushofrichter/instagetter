@@ -104,20 +104,77 @@ node scripts/state.js --skip <shortcode>
 Do the same for any post whose image genuinely cannot be fetched after trying
 `?img_index=1`. Never let a skip pass silently as a success.
 
+**Before recording a skip, confirm it is really unfetchable.** A skip means
+"this cannot be got", not "this run could not get it" — and the difference has
+been wrong before. Check `document.querySelectorAll('video').length` and
+`og:video`; a post with neither, and with a large empty-alt `img` present, is a
+probe bug rather than an unfetchable post. Use the selector in **Extracting one
+post** and never a hand-written variant.
+
+A skip is reversible, and correcting one should not mean editing S3 by hand:
+
+```bash
+node scripts/state.js --unskip <shortcode>
+```
+
 ### Extracting one post
 
 Navigate to `https://www.instagram.com/p/<shortcode>/?img_index=<n>` — always
 with the index, even for a single image (see the carousel section: the bare URL
 sometimes renders a blank frame). Then:
 
-1. Poll for the main image rather than sleeping a fixed time.
-2. Read metadata: caption from `og:title`, `takenAt` from `time[datetime]`,
+1. **Take a screenshot first. This is not optional.** The image does not paint
+   until something forces a capture: `naturalWidth` stays `0` and the page
+   shows the blank grey frame no matter how long you wait. Confirmed on
+   2026-09-09 — a probe found `0` images, a screenshot was taken, the identical
+   probe then found the photo at 1440x1440.
+
+   Longer waits do **not** substitute. The tab is backgrounded, so timers are
+   clamped hard: a loop bounded at 6000ms took **32981ms** to finish. That is
+   why the 15s-then-25s retry on 2026-09-06 failed twice and declared two
+   perfectly good posts unfetchable. Sequence per slide, always:
+
+   ```
+   navigate ?img_index=N  ->  screenshot  ->  probe + download
+   ```
+
+   `browser_batch` does this in one round trip.
+
+2. Then find the image. **Use this selector — do not write your own.**
+
+   ```js
+   // The post's own photo: a large image whose alt is EMPTY.
+   const findPostImages = () =>
+     [...document.querySelectorAll('img')]
+       .filter((i) => i.naturalWidth > 600 && (i.alt || '') === '');
+   ```
+
+   Two traps, both of which have already cost real posts:
+
+   - **Never scope to `article`.** Many post pages have **no `<article>`
+     element at all** — `document.querySelectorAll('article img').length` is
+     `0` while plain `img` returns the photo. `main` is present where `article`
+     is not, but there is no reason to scope at all. This compounds the paint
+     problem above: a scoped selector finds nothing even after a capture.
+   - **Never match on alt text.** The post's own images have an **empty**
+     `alt`; the images on the same page carrying descriptive alt text belong to
+     *other* posts in the surrounding feed. Filtering for non-empty alt does
+     not fail — it silently grabs someone else's photo, which is worse.
+
+   If this selector finds nothing after ~15s, the post genuinely has no image:
+   check for a video before recording a skip.
+3. Read metadata: caption from `og:title`, `takenAt` from `time[datetime]`,
    likes/comments from `og:description`, location from the body text — skipping
    an `AI content` badge if present.
-3. In-page: `fetch(img.currentSrc)` -> blob -> anchor with
-   `download="<shortcode>_<NN>.jpg"` -> click.
-4. Repeat for each slide until the image bytes repeat, or the dot count is
-   reached.
+4. In-page: `fetch(img.currentSrc)` -> blob -> anchor with
+   `download="<shortcode>_<NN>.jpg"` -> click. Do the whole thing in-page and
+   return only name/size/dimensions: CDN URLs carry auth query strings, and a
+   tool result containing one is blocked outright.
+5. Repeat for each slide until the image bytes repeat, or the dot count is
+   reached. **Pick the on-screen slide only** — a carousel keeps neighbours in
+   the DOM, so filter candidates by `getBoundingClientRect()` falling inside
+   the viewport, or you will download the same neighbour repeatedly. Distinct
+   byte sizes across slides are the cheap check that this worked.
 
 ### Finishing
 
