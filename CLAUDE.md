@@ -459,6 +459,14 @@ Two consequences worth keeping:
   without them cannot pin the local Linux browser and takes whichever is
   default; with a macOS browser also connected that is luck, not choice, and an
   unlucky night drives a logged-out profile.
+- **The pinned deviceId rotates.** On 2026-09-11 the id the skill had been
+  pinned to no longer existed, `select_browser` rejected it, and the run
+  stopped before touching the browser -- correctly, but the night was missed
+  and the guard is what surfaced it (exit 2, 6 turns, $0.78). `SKILL.md` now
+  falls back to the entry with `osPlatform: "Linux"` and `isLocal: true` and
+  reports that it did, so the next rotation costs a warning rather than a run.
+  Never select by display name: the same two browsers listed as
+  "Browser 1 = macOS" on 2026-09-11 and "Browser 1 = Linux" two days earlier.
 
 ### Model and cost
 
