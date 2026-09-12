@@ -454,19 +454,28 @@ Two consequences worth keeping:
 
 - The wrapper exits 2 when a run records nothing, because that first run
   reported exit 0 while doing nothing — the worst outcome, since it looks
-  healthy in every log.
+  healthy in every log. It checks the **counts**, not just `lastRun`: on
+  2026-09-12 a logged-out browser produced a run that extracted nothing, said
+  so in its own summary, then called `state.js --record 0 0`. That moved
+  `lastRun`, so a guard comparing timestamps saw a change and let it exit 0. A
+  recorded 0 new + 0 backfilled is now exit 2 in its own right, since Phase 2
+  takes twelve a night and the archive is nowhere near exhausted.
 - `select_browser` and `list_connected_browsers` are in the allowlist. A run
   without them cannot pin the local Linux browser and takes whichever is
   default; with a macOS browser also connected that is luck, not choice, and an
   unlucky night drives a logged-out profile.
-- **The pinned deviceId rotates.** On 2026-09-11 the id the skill had been
-  pinned to no longer existed, `select_browser` rejected it, and the run
-  stopped before touching the browser -- correctly, but the night was missed
-  and the guard is what surfaced it (exit 2, 6 turns, $0.78). `SKILL.md` now
-  falls back to the entry with `osPlatform: "Linux"` and `isLocal: true` and
-  reports that it did, so the next rotation costs a warning rather than a run.
-  Never select by display name: the same two browsers listed as
-  "Browser 1 = macOS" on 2026-09-11 and "Browser 1 = Linux" two days earlier.
+- **Never pin a deviceId. Select the browser by `isLocal`.** The id is
+  per-connection, not per-browser: `784e894b` on 09-09, `c1054376` on 09-11,
+  `7e58c8f7` on 09-12 -- three ids in four days for the same Chrome, so a pin
+  fails roughly every restart. It cost the whole 09-11 run. `isLocal: true` is
+  the property that actually means "this machine"; if no local browser is
+  connected the run must stop rather than drive a remote one. Never select by
+  display name either: the same two browsers listed as "Browser 1 = macOS" on
+  09-11 and "Browser 1 = Linux" two days earlier.
+- **A logged-out Chrome looks like a working one.** The profile is public, so
+  Phase 1 still reads the newest twelve tiles and reports "nothing new"
+  correctly; only Phase 2's scrolling fails. Assert `Edit profile` is in the
+  page before extracting -- it appears only for the signed-in owner.
 
 ### Model and cost
 

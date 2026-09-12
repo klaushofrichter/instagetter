@@ -37,6 +37,17 @@ echo "=== $(date -Is) starting nightly extraction ===" >> "$LOG"
 # Remember where the state stood, so a run that changed nothing can be told
 # apart from one that worked. Exit 0 with an empty result is worse than a
 # failure: it looks fine in every log and metric.
+#
+# Read the COUNTS, not just lastRun. Comparing lastRun alone was defeated on
+# 2026-09-12: the browser was logged out of Instagram, the run correctly
+# extracted nothing and said so -- then called `state.js --record 0 0`, which
+# updates lastRun. The timestamp moved, the guard saw a change, and a run that
+# its own summary called a failure exited 0.
+state_counts() {
+  node scripts/state.js 2>/dev/null | python3 -c 'import json,sys
+d = json.load(sys.stdin)
+print(d.get("lastNewCount", 0) + d.get("lastBackfillCount", 0))' 2>/dev/null || echo ""
+}
 BEFORE=$(node scripts/state.js 2>/dev/null | python3 -c 'import json,sys;print(json.load(sys.stdin).get("lastRun",""))' 2>/dev/null || true)
 
 # --chrome is what makes the Claude-in-Chrome tools exist in a headless run.
@@ -73,9 +84,18 @@ Nightly run. Phase 1: check the top of the klaushofrichter profile for posts new
 STATUS=${PIPESTATUS[0]}
 
 AFTER=$(node scripts/state.js 2>/dev/null | python3 -c 'import json,sys;print(json.load(sys.stdin).get("lastRun",""))' 2>/dev/null || true)
+ADDED=$(state_counts)
 if [ "$STATUS" -eq 0 ] && [ "$BEFORE" = "$AFTER" ]; then
   echo "NO-OP: the run reported success but recorded nothing — state.json is unchanged." >> "$LOG"
   echo "       Nothing was extracted. See the transcript above for why." >> "$LOG"
+  STATUS=2
+elif [ "$STATUS" -eq 0 ] && [ "${ADDED:-0}" = "0" ]; then
+  # A recorded run of 0 new + 0 backfilled. Phase 2 takes 12 a night and the
+  # archive is nowhere near exhausted, so this is a failure wearing a
+  # timestamp -- most likely the browser is logged out of Instagram, which
+  # still renders the public profile and so passes Phase 1.
+  echo "NO-OP: the run recorded 0 new and 0 backfilled posts." >> "$LOG"
+  echo "       Check whether the local Chrome is still logged in to Instagram." >> "$LOG"
   STATUS=2
 fi
 

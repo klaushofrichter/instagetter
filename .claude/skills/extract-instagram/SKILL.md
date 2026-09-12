@@ -22,27 +22,40 @@ scrape of the account or of anyone else's.
   return only metadata.
 - **Always use a fresh tab** (`tabs_create_mcp`), and close it when done. A
   reused tab has been observed serving a frozen snapshot.
-- **Pick the browser by deviceId first, platform second — never by name.**
-  Call `list_connected_browsers`, then `select_browser` with:
+- **Always use the local browser. Select it by `isLocal`, never by deviceId or
+  name.** Call `list_connected_browsers` and pick the entry with
+  `isLocal: true` and `osPlatform: "Linux"`; if there is exactly one
+  `isLocal: true` entry, that is the one. If there is none, **stop** — do not
+  fall back to a remote browser. A remote one is a different machine's profile,
+  may be logged out, and produces a run that looks fine and extracts nothing.
 
-  1. deviceId `c1054376-d2b2-453b-9395-832f734fdb55` if it is present;
-  2. otherwise the entry with `osPlatform: "Linux"` **and** `isLocal: true`,
-     and say in the summary that the pinned id was gone and which one was used
-     instead;
-  3. otherwise stop. Do not fall back to a remote or macOS browser: that is a
-     different profile and may be logged out, which produces a run that looks
-     fine and extracts nothing.
+  **Do not pin a deviceId.** It is per-connection, not per-browser: observed as
+  `784e894b…` on 2026-09-09, `c1054376…` on 2026-09-11 and `7e58c8f7…` on
+  2026-09-12 — three ids in four days for the same Chrome. A pin therefore
+  fails roughly every time Chrome or the extension restarts, and on 2026-09-11
+  it cost a whole night. `isLocal` is the property that actually means "this
+  machine".
 
-  The id is a pin, not a guarantee — it rotates on an extension reinstall or a
-  profile change. On 2026-09-11 the previously pinned
-  `784e894b-66e6-4bf6-96a1-5b97e6a3af74` no longer existed, `select_browser`
-  rejected it, and the night was missed. The platform fallback exists so a
-  rotation costs a warning rather than a run. **Update the pin above whenever
-  the fallback has to be used.**
+  Never match on the display name either. The same two browsers listed as
+  "Browser 1 = macOS" on 2026-09-11 and "Browser 1 = Linux" two days earlier.
 
-  Never match on the display name. On 2026-09-11 the same two browsers listed
-  as "Browser 1 = macOS, Browser 2 = Linux"; two days earlier the labels were
-  the other way round.
+- **Check you are logged in before extracting anything.** The profile is
+  public, so a logged-out browser still renders the newest twelve tiles —
+  Phase 1 appears to work and Phase 2 silently cannot scroll. Assert before
+  starting:
+
+  ```js
+  JSON.stringify({
+    loggedIn: /Edit profile/.test(document.body.innerText),
+    hasLogIn: /Log in|Log In/.test(document.body.innerText),
+  })
+  ```
+
+  `Edit profile` is present only when signed in as the account owner. If
+  `loggedIn` is false, **stop and say the browser is logged out** — record
+  nothing, and do not call `state.js --record`, which would make the run look
+  like a legitimate quiet night. This happened on 2026-09-12.
+
 - **Post pages have no `<article>` element.** The modal layout (opened from the
   profile grid) does; the standalone `/p/<code>/` layout does not. Select the
   main image by rendered size instead: `getBoundingClientRect().width > 400`.
